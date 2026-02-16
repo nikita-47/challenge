@@ -11,6 +11,11 @@ import (
 	"strings"
 )
 
+type message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 func main() {
 	apiKey := loadEnv(".env", "ANTHROPIC_API_KEY")
 	if apiKey == "" {
@@ -18,17 +23,44 @@ func main() {
 		os.Exit(1)
 	}
 
-	prompt := "Hello, Claude! Say something short and fun."
-	if len(os.Args) > 1 {
-		prompt = strings.Join(os.Args[1:], " ")
-	}
+	fmt.Println("Chat with Claude (type \"exit\" to quit)")
+	fmt.Println()
 
+	scanner := bufio.NewScanner(os.Stdin)
+	var history []message
+
+	for {
+		fmt.Print("You: ")
+		if !scanner.Scan() {
+			break
+		}
+		input := strings.TrimSpace(scanner.Text())
+		if input == "" {
+			continue
+		}
+		if input == "exit" {
+			break
+		}
+
+		history = append(history, message{Role: "user", Content: input})
+
+		reply, err := chat(apiKey, history)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error:", err)
+			history = history[:len(history)-1]
+			continue
+		}
+
+		history = append(history, message{Role: "assistant", Content: reply})
+		fmt.Printf("\nClaude: %s\n\n", reply)
+	}
+}
+
+func chat(apiKey string, messages []message) (string, error) {
 	body, _ := json.Marshal(map[string]any{
 		"model":      "claude-sonnet-4-5-20250929",
 		"max_tokens": 1024,
-		"messages": []map[string]string{
-			{"role": "user", "content": prompt},
-		},
+		"messages":   messages,
 	})
 
 	req, _ := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
@@ -38,16 +70,14 @@ func main() {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Request failed:", err)
-		os.Exit(1)
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != 200 {
-		fmt.Fprintf(os.Stderr, "API error (%d): %s\n", resp.StatusCode, respBody)
-		os.Exit(1)
+		return "", fmt.Errorf("API error (%d): %s", resp.StatusCode, respBody)
 	}
 
 	var result struct {
@@ -57,9 +87,11 @@ func main() {
 	}
 	json.Unmarshal(respBody, &result)
 
+	var parts []string
 	for _, block := range result.Content {
-		fmt.Println(block.Text)
+		parts = append(parts, block.Text)
 	}
+	return strings.Join(parts, ""), nil
 }
 
 func loadEnv(path, key string) string {
