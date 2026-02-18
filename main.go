@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,16 +17,84 @@ type message struct {
 	Content string `json:"content"`
 }
 
+type config struct {
+	maxTokens int
+	system    string
+	stop      string
+	format    string
+}
+
 func main() {
+	cfg := parseArgs()
+
 	apiKey := loadEnv(".env", "ANTHROPIC_API_KEY")
 	if apiKey == "" {
 		fmt.Fprintln(os.Stderr, "ANTHROPIC_API_KEY not set in .env")
 		os.Exit(1)
 	}
 
-	fmt.Println("Chat with Claude (type \"exit\" to quit)")
-	fmt.Println()
+	printBanner(cfg)
+	runChat(apiKey, cfg)
+}
 
+func parseArgs() config {
+	cfg := config{}
+	flag.IntVar(&cfg.maxTokens, "max-tokens", 1024, "max response tokens")
+	flag.StringVar(&cfg.system, "system", "", "system prompt")
+	flag.StringVar(&cfg.stop, "stop", "", "stop sequence")
+	flag.StringVar(&cfg.format, "format", "", "response format instruction")
+	flag.Parse()
+	return cfg
+}
+
+func printBanner(cfg config) {
+	fmt.Println("=== Claude CLI Chat ===")
+	fmt.Printf("Model:      claude-sonnet-4-5-20250929\n")
+	fmt.Printf("Max tokens: %d\n", cfg.maxTokens)
+	if cfg.system != "" {
+		fmt.Printf("System:     %s\n", cfg.system)
+	}
+	if cfg.stop != "" {
+		fmt.Printf("Stop:       %q\n", cfg.stop)
+	}
+	if cfg.format != "" {
+		fmt.Printf("Format:     %s\n", cfg.format)
+	}
+	fmt.Println()
+	fmt.Println("Type /help for commands, \"exit\" or \"quit\" to quit.")
+	fmt.Println()
+}
+
+func printHelp() {
+	fmt.Println("Commands:")
+	fmt.Println("  /help            — show this help")
+	fmt.Println("  /clear           — reset conversation history")
+	fmt.Println("  /system <text>   — update system prompt")
+	fmt.Println("  exit / quit      — quit")
+	fmt.Println()
+	fmt.Println("Flags (set at startup):")
+	fmt.Println("  --max-tokens int    max response tokens (default 1024)")
+	fmt.Println("  --system string     system prompt")
+	fmt.Println("  --stop string       stop sequence")
+	fmt.Println("  --format string     response format instruction")
+	fmt.Println()
+}
+
+func buildSystemPrompt(cfg config) string {
+	parts := []string{}
+	if cfg.system != "" {
+		parts = append(parts, cfg.system)
+	}
+	if cfg.format != "" {
+		parts = append(parts, "Always respond in this format: "+cfg.format)
+	}
+	if cfg.stop != "" {
+		parts = append(parts, "Always end your response with: "+cfg.stop)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func runChat(apiKey string, cfg config) {
 	scanner := bufio.NewScanner(os.Stdin)
 	var history []message
 
@@ -38,30 +107,62 @@ func main() {
 		if input == "" {
 			continue
 		}
-		if input == "exit" {
-			break
+
+		switch {
+		case input == "exit" || input == "quit":
+			fmt.Println("Goodbye!")
+			return
+		case input == "/help":
+			printHelp()
+			continue
+		case input == "/clear":
+			history = nil
+			fmt.Println("History cleared.")
+			fmt.Println()
+			continue
+		case strings.HasPrefix(input, "/system "):
+			cfg.system = strings.TrimPrefix(input, "/system ")
+			fmt.Printf("System prompt updated: %s\n\n", cfg.system)
+			continue
 		}
 
 		history = append(history, message{Role: "user", Content: input})
 
-		reply, err := chat(apiKey, history)
+		fmt.Print("\nClaude: ")
+		reply, err := streamChat(apiKey, cfg, history)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
+			fmt.Fprintln(os.Stderr, "\nError:", err)
 			history = history[:len(history)-1]
 			continue
 		}
+		fmt.Println("\n")
 
 		history = append(history, message{Role: "assistant", Content: reply})
-		fmt.Printf("\nClaude: %s\n\n", reply)
 	}
 }
 
-func chat(apiKey string, messages []message) (string, error) {
-	body, _ := json.Marshal(map[string]any{
+func buildRequest(cfg config, msgs []message) map[string]any {
+	req := map[string]any{
 		"model":      "claude-sonnet-4-5-20250929",
-		"max_tokens": 1024,
-		"messages":   messages,
-	})
+		"max_tokens": cfg.maxTokens,
+		"messages":   msgs,
+		"stream":     true,
+	}
+
+	systemPrompt := buildSystemPrompt(cfg)
+	if systemPrompt != "" {
+		req["system"] = systemPrompt
+	}
+
+	if cfg.stop != "" {
+		req["stop_sequences"] = []string{cfg.stop}
+	}
+
+	return req
+}
+
+func streamChat(apiKey string, cfg config, msgs []message) (string, error) {
+	body, _ := json.Marshal(buildRequest(cfg, msgs))
 
 	req, _ := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
 	req.Header.Set("x-api-key", apiKey)
@@ -74,24 +175,52 @@ func chat(apiKey string, messages []message) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, _ := io.ReadAll(resp.Body)
-
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("API error (%d): %s", resp.StatusCode, respBody)
+		errBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("API error (%d): %s", resp.StatusCode, errBody)
 	}
 
-	var result struct {
-		Content []struct {
-			Text string `json:"text"`
-		} `json:"content"`
-	}
-	json.Unmarshal(respBody, &result)
+	return readStream(resp.Body)
+}
 
-	var parts []string
-	for _, block := range result.Content {
-		parts = append(parts, block.Text)
+func readStream(r io.Reader) (string, error) {
+	var fullText strings.Builder
+	scanner := bufio.NewScanner(r)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+
+		var event struct {
+			Type  string `json:"type"`
+			Delta struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"delta"`
+		}
+
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+
+		if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" {
+			fmt.Print(event.Delta.Text)
+			fullText.WriteString(event.Delta.Text)
+		}
 	}
-	return strings.Join(parts, ""), nil
+
+	if err := scanner.Err(); err != nil {
+		return fullText.String(), err
+	}
+
+	return fullText.String(), nil
 }
 
 func loadEnv(path, key string) string {
