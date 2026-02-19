@@ -1,17 +1,22 @@
-# Challenge - CLI Chat with Claude
+# AI Challenge — CLI Chat with Claude
 
-Simple interactive CLI chat tool that talks to Claude via the Anthropic API.
+30-day AI challenge. Each day builds a new feature on top of the previous one.
+See `TASKS.md` for all daily assignments and their status.
 
 ## Project structure
 
-- `main.go` — single-file Go application, no external dependencies
+- `main.go` — app entry, chat loop, API client, markdown rendering (~290 lines)
+- `compare.go` — split-screen TUI, panel rendering, comparison orchestrator (~430 lines)
+- `TASKS.md` — daily task log (assignments, status, notes)
 - `.env` — stores `ANTHROPIC_API_KEY` (not committed)
 
 ## How to run
 
 ```
-go run main.go [flags]
+go run . [flags]
 ```
+
+> Note: always `go run .` (not `go run main.go`) — the project spans multiple files.
 
 ### CLI flags
 
@@ -24,7 +29,7 @@ go run main.go [flags]
 
 Example:
 ```
-go run main.go --max-tokens 200 --format "bullet points" --stop "END"
+go run . --max-tokens 200 --format "bullet points" --stop "END"
 ```
 
 ### Chat commands
@@ -38,7 +43,7 @@ go run main.go --max-tokens 200 --format "bullet points" --stop "END"
 
 ## Key decisions
 
-- **Single file**: everything lives in `main.go` — keep it that way
+- **Two files**: `main.go` (chat/API) and `compare.go` (split-screen TUI) — keep it that way
 - **No external deps**: uses only Go stdlib (net/http, encoding/json, etc.)
 - **`.env` loading**: hand-rolled parser, no third-party dotenv library
 - **Model**: claude-sonnet-4-5-20250929
@@ -51,3 +56,4 @@ go run main.go --max-tokens 200 --format "bullet points" --stop "END"
 - Keep it simple — avoid over-engineering
 - No external dependencies unless absolutely necessary
 - `.env` must never be committed
+- Before starting a new day's task, read `TASKS.md` to understand what was built before

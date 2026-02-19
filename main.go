@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 )
 
@@ -22,7 +23,31 @@ type config struct {
 	system    string
 	stop      string
 	format    string
+	compare   string
 }
+
+// ─── Markdown rendering ───────────────────────────────────────────────────────
+
+var (
+	reCodeBlock  = regexp.MustCompile("(?s)```[a-z]*\n?(.*?)```")
+	reCodeInline = regexp.MustCompile("`([^`\n]+)`")
+	reBold       = regexp.MustCompile(`\*\*([^*\n]+)\*\*`)
+	reHeading    = regexp.MustCompile(`(?m)^#{1,3} (.+)$`)
+	reHRule      = regexp.MustCompile(`(?m)^[-*_]{3,}\s*$`)
+	reBullet     = regexp.MustCompile(`(?m)^(\s*)[*-] `)
+)
+
+func renderMarkdown(s string) string {
+	s = reCodeBlock.ReplaceAllString(s, "\033[33m$1\033[0m")
+	s = reBold.ReplaceAllString(s, "\033[1m$1\033[0m")
+	s = reCodeInline.ReplaceAllString(s, "\033[33m$1\033[0m")
+	s = reHeading.ReplaceAllString(s, "\033[1m$1\033[0m")
+	s = reHRule.ReplaceAllString(s, strings.Repeat("─", 60))
+	s = reBullet.ReplaceAllString(s, "$1• ")
+	return s
+}
+
+// ─── App ──────────────────────────────────────────────────────────────────────
 
 func main() {
 	cfg := parseArgs()
@@ -31,6 +56,12 @@ func main() {
 	if apiKey == "" {
 		fmt.Fprintln(os.Stderr, "ANTHROPIC_API_KEY not set in .env")
 		os.Exit(1)
+	}
+
+	if cfg.compare != "" {
+		scanner := bufio.NewScanner(os.Stdin)
+		runComparison(apiKey, cfg, cfg.compare, scanner)
+		return
 	}
 
 	printBanner(cfg)
@@ -43,6 +74,7 @@ func parseArgs() config {
 	flag.StringVar(&cfg.system, "system", "", "system prompt")
 	flag.StringVar(&cfg.stop, "stop", "", "stop sequence")
 	flag.StringVar(&cfg.format, "format", "", "response format instruction")
+	flag.StringVar(&cfg.compare, "compare", "", "run 4-way comparison and exit")
 	flag.Parse()
 	return cfg
 }
@@ -67,16 +99,18 @@ func printBanner(cfg config) {
 
 func printHelp() {
 	fmt.Println("Commands:")
-	fmt.Println("  /help            — show this help")
-	fmt.Println("  /clear           — reset conversation history")
-	fmt.Println("  /system <text>   — update system prompt")
-	fmt.Println("  exit / quit      — quit")
+	fmt.Println("  /help                — show this help")
+	fmt.Println("  /clear               — reset conversation history")
+	fmt.Println("  /system <text>       — update system prompt")
+	fmt.Println("  /compare <question>  — stream 4 reasoning approaches side-by-side")
+	fmt.Println("  exit / quit          — quit")
 	fmt.Println()
 	fmt.Println("Flags (set at startup):")
 	fmt.Println("  --max-tokens int    max response tokens (default 1024)")
 	fmt.Println("  --system string     system prompt")
 	fmt.Println("  --stop string       stop sequence")
 	fmt.Println("  --format string     response format instruction")
+	fmt.Println("  --compare string    run 4-way comparison directly and exit")
 	fmt.Println()
 }
 
@@ -124,6 +158,11 @@ func runChat(apiKey string, cfg config) {
 			cfg.system = strings.TrimPrefix(input, "/system ")
 			fmt.Printf("System prompt updated: %s\n\n", cfg.system)
 			continue
+		case strings.HasPrefix(input, "/compare "):
+			question := strings.TrimPrefix(input, "/compare ")
+			runComparison(apiKey, cfg, question, scanner)
+			printBanner(cfg)
+			continue
 		}
 
 		history = append(history, message{Role: "user", Content: input})
@@ -141,6 +180,8 @@ func runChat(apiKey string, cfg config) {
 	}
 }
 
+// ─── API ──────────────────────────────────────────────────────────────────────
+
 func buildRequest(cfg config, msgs []message) map[string]any {
 	req := map[string]any{
 		"model":      "claude-sonnet-4-5-20250929",
@@ -149,11 +190,9 @@ func buildRequest(cfg config, msgs []message) map[string]any {
 		"stream":     true,
 	}
 
-	systemPrompt := buildSystemPrompt(cfg)
-	if systemPrompt != "" {
-		req["system"] = systemPrompt
+	if sp := buildSystemPrompt(cfg); sp != "" {
+		req["system"] = sp
 	}
-
 	if cfg.stop != "" {
 		req["stop_sequences"] = []string{cfg.stop}
 	}
@@ -183,8 +222,9 @@ func streamChat(apiKey string, cfg config, msgs []message) (string, error) {
 	return readStream(resp.Body)
 }
 
+// readStream prints tokens as they arrive, rendering markdown line-by-line.
 func readStream(r io.Reader) (string, error) {
-	var fullText strings.Builder
+	var full, pending strings.Builder
 	scanner := bufio.NewScanner(r)
 
 	for scanner.Scan() {
@@ -192,7 +232,6 @@ func readStream(r io.Reader) (string, error) {
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
-
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
 			break
@@ -205,23 +244,35 @@ func readStream(r io.Reader) (string, error) {
 				Text string `json:"text"`
 			} `json:"delta"`
 		}
-
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			continue
 		}
-
 		if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" {
-			fmt.Print(event.Delta.Text)
-			fullText.WriteString(event.Delta.Text)
+			text := event.Delta.Text
+			full.WriteString(text)
+			pending.WriteString(text)
+
+			// Render complete lines as they arrive.
+			buf := pending.String()
+			if i := strings.LastIndex(buf, "\n"); i >= 0 {
+				fmt.Print(renderMarkdown(buf[:i+1]))
+				pending.Reset()
+				pending.WriteString(buf[i+1:])
+			}
 		}
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fullText.String(), err
+	if pending.Len() > 0 {
+		fmt.Print(renderMarkdown(pending.String()))
 	}
 
-	return fullText.String(), nil
+	if err := scanner.Err(); err != nil {
+		return full.String(), err
+	}
+	return full.String(), nil
 }
+
+// ─── Env ──────────────────────────────────────────────────────────────────────
 
 func loadEnv(path, key string) string {
 	f, err := os.Open(path)
