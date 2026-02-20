@@ -25,6 +25,7 @@ go run . [flags]
 | `--max-tokens int` | 1024 | Max response tokens |
 | `--system string` | — | System prompt |
 | `--stop string` | — | Stop sequence (sent as `stop_sequences` array) |
+| `--temperature float` | API default | Sampling temperature (0.0–1.0) |
 | `--format string` | — | Format instruction appended to system prompt |
 
 Example:
@@ -39,6 +40,7 @@ go run . --max-tokens 200 --format "bullet points" --stop "END"
 | `/help` | Show help and flag reference |
 | `/clear` | Reset conversation history |
 | `/system <text>` | Update system prompt mid-session |
+| `/temp <question>` | Compare temperature 0 / 0.7 / 1.0 side-by-side |
 | `exit` / `quit` | Quit |
 
 ## Key decisions

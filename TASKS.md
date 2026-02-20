@@ -64,6 +64,30 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 4 — Temperature ✅
+
+**Assignment:** Send the same request with temperature 0, 0.7, and 1.0. Compare accuracy, creativity, and diversity. Determine which temperature suits which tasks.
+
+**What was built on top of Day 3:**
+- `--temperature` flag (sets sampling temperature 0.0–1.0 in API request)
+- `--tempcompare` flag (run 3-way temperature comparison directly and exit)
+- `/temp <question>` chat command — streams the same question at temp 0, 0.7, and 1.0 in a 3-column split-screen TUI
+- `newTempScreen()` — 3-column panel layout (reuses `splitScreen` infrastructure)
+- `drawTempBorders()` / `redrawTemp()` — rendering for the 3-column variant
+- `runTempComparison()` — orchestrator: 3 goroutines, one per temperature, with Ctrl+C cancellation
+- `panelCount` field on `splitScreen` — generalizes done counter for 3 or 4 panels
+- `--verbose` works in panel modes: curl output rendered inside each panel (not to stderr)
+- `formatCurl()` — returns curl command as string for in-panel rendering
+
+**Key code:** `runTempComparison()`, `newTempScreen()`, `drawTempBorders()`
+
+**Observations:**
+- Anthropic API max temperature is 1.0 (not 1.5 as some docs suggest)
+- Temperature difference is most visible on creative tasks (stories, metaphors, naming)
+- Factual/analytical questions produce nearly identical output at any temperature
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

@@ -55,17 +55,18 @@ type panel struct {
 // ─── Split screen ─────────────────────────────────────────────────────────────
 
 type splitScreen struct {
-	mu        sync.Mutex
-	panels    [4]*panel
-	termW     int
-	half      int
-	panelH    int
-	midRow    int
-	questR    int
-	sepR      int
-	statusR   int
-	question  string
-	doneCount int
+	mu         sync.Mutex
+	panels     [4]*panel
+	panelCount int
+	termW      int
+	half       int
+	panelH     int
+	midRow     int
+	questR     int
+	sepR       int
+	statusR    int
+	question   string
+	doneCount  int
 }
 
 func newSplitScreen(question string) *splitScreen {
@@ -100,7 +101,7 @@ func newSplitScreen(question string) *splitScreen {
 	}
 
 	ss := &splitScreen{
-		panels: panels, termW: w, half: half, panelH: panelH,
+		panels: panels, panelCount: 4, termW: w, half: half, panelH: panelH,
 		midRow: midRow, questR: questR, sepR: sepR, statusR: statusR,
 		question: question,
 	}
@@ -228,9 +229,10 @@ func (ss *splitScreen) markDone() {
 	ss.mu.Lock()
 	ss.doneCount++
 	n := ss.doneCount
+	total := ss.panelCount
 	ss.mu.Unlock()
-	if n < 4 {
-		ss.setStatus(fmt.Sprintf("Streaming... (%d/4 готово) — Ctrl+C чтобы отменить", n))
+	if n < total {
+		ss.setStatus(fmt.Sprintf("Streaming... (%d/%d готово) — Ctrl+C чтобы отменить", n, total))
 	}
 }
 
@@ -276,6 +278,10 @@ func (ss *splitScreen) cleanup() {
 
 func streamToPanel(ctx context.Context, apiKey string, cfg config, msgs []message, ss *splitScreen, p *panel) (string, error) {
 	body, _ := json.Marshal(buildRequest(cfg, msgs))
+
+	if cfg.verbose {
+		ss.write(p, formatCurl(apiKey, body)+"\n")
+	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
 	if err != nil {
@@ -444,6 +450,171 @@ func runComparison(apiKey string, cfg config, question string, scanner *bufio.Sc
 			ss.viewPanel(int(input[0] - '1'))
 			scanner.Scan() // wait for Enter
 			ss.redraw()
+			fmt.Print("\033[?25l")
+		}
+	}
+
+	fmt.Print("\033[?25h")
+	_, h := termSize()
+	fmt.Printf("\033[%d;1H\n", h)
+}
+
+// ─── Temperature comparison ──────────────────────────────────────────────────
+
+func newTempScreen(question string) *splitScreen {
+	w, h := termSize()
+	third := w / 3
+
+	// Layout: 3 columns, single row of panels
+	//   row 1            top border
+	//   row 2..pH+1      panel content
+	//   row pH+2         bottom border
+	//   row pH+3         question line 1
+	//   row pH+4         question line 2
+	//   row pH+5         separator
+	//   row pH+6         status
+	// => panelH = h - 6
+	panelH := h - 6
+	if panelH < 3 {
+		panelH = 3
+	}
+
+	questR := panelH + 3
+	sepR := panelH + 5
+	statusR := panelH + 6
+
+	panels := [4]*panel{
+		{title: "temp=0", color: "\033[94m", r0: 2, c0: 2, w: third - 1, h: panelH},
+		{title: "temp=0.7", color: "\033[92m", r0: 2, c0: third + 2, w: third - 1, h: panelH},
+		{title: "temp=1.0", color: "\033[93m", r0: 2, c0: 2*third + 2, w: w - 2*third - 2, h: panelH},
+		{}, // unused 4th slot
+	}
+
+	ss := &splitScreen{
+		panels: panels, panelCount: 3, termW: w, half: third, panelH: panelH,
+		midRow: 0, questR: questR, sepR: sepR, statusR: statusR,
+		question: question,
+	}
+
+	fmt.Print("\033[2J\033[H\033[?25l")
+	ss.drawTempBorders()
+
+	ss.drawQuestion()
+	fmt.Printf("\033[%d;1H%s", sepR, strings.Repeat("─", w))
+	fmt.Printf("\033[%d;1HStreaming... (Ctrl+C — отменить)", statusR)
+
+	return ss
+}
+
+func (ss *splitScreen) drawTempBorders() {
+	w := ss.termW
+	third := ss.half
+	panelH := ss.panelH
+
+	h1 := strings.Repeat("─", third-1)
+	h2 := strings.Repeat("─", third-1)
+	h3 := strings.Repeat("─", w-2*third-2)
+
+	// top border
+	fmt.Printf("\033[1;1H┌%s┬%s┬%s┐", h1, h2, h3)
+	// panel rows
+	for r := 2; r <= panelH+1; r++ {
+		fmt.Printf("\033[%d;1H│\033[%d;%dH│\033[%d;%dH│\033[%d;%dH│",
+			r, r, third+1, r, 2*third+1, r, w)
+	}
+	// bottom border
+	fmt.Printf("\033[%d;1H└%s┴%s┴%s┘", panelH+2, h1, h2, h3)
+
+	// panel titles
+	titles := [3]struct{ col int; color, name string }{
+		{3, ss.panels[0].color, ss.panels[0].title},
+		{third + 3, ss.panels[1].color, ss.panels[1].title},
+		{2*third + 3, ss.panels[2].color, ss.panels[2].title},
+	}
+	for _, t := range titles {
+		fmt.Printf("\033[1;%dH%s %s \033[0m", t.col, t.color, t.name)
+	}
+}
+
+func (ss *splitScreen) redrawTemp() {
+	fmt.Print("\033[2J\033[H\033[?25l")
+	ss.drawTempBorders()
+
+	ss.drawQuestion()
+	fmt.Printf("\033[%d;1H%s", ss.sepR, strings.Repeat("─", ss.termW))
+
+	for i := 0; i < 3; i++ {
+		p := ss.panels[i]
+		content := p.buf.String()
+		p.cr, p.cc = 0, 0
+		p.lines = nil
+		p.curLine.Reset()
+		p.buf.Reset()
+		var out strings.Builder
+		ss.writeInto(p, content, &out)
+		fmt.Print(out.String())
+	}
+	fmt.Printf("\033[%d;1H", ss.statusR)
+}
+
+func runTempComparison(apiKey string, cfg config, question string, scanner *bufio.Scanner) {
+	ss := newTempScreen(question)
+	defer ss.cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	go func() {
+		select {
+		case <-sigCh:
+			ss.setStatus("Отмена... ожидаем завершения горутин.")
+			cancel()
+		case <-ctx.Done():
+		}
+		signal.Stop(sigCh)
+	}()
+
+	temps := [3]float64{0, 0.7, 1.0}
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	for i := 0; i < 3; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			p := ss.panels[idx]
+			tempCfg := cfg
+			tempCfg.temperature = temps[idx]
+			streamToPanel(ctx, apiKey, tempCfg,
+				[]message{{Role: "user", Content: question}},
+				ss, p)
+			ss.markDone()
+		}(i)
+	}
+
+	wg.Wait()
+
+	wasCancelled := ctx.Err() != nil
+	cancel()
+
+	for {
+		msg := "Готово! Введи 1-3 для просмотра панели, Enter для выхода в чат."
+		if wasCancelled {
+			msg = "Отменено. Введи 1-3 для просмотра панели, Enter для выхода в чат."
+		}
+		ss.setStatus(msg)
+		fmt.Print("\033[?25h")
+		scanner.Scan()
+		input := strings.TrimSpace(scanner.Text())
+
+		if input == "" {
+			break
+		}
+		if len(input) == 1 && input[0] >= '1' && input[0] <= '3' {
+			ss.viewPanel(int(input[0] - '1'))
+			scanner.Scan()
+			ss.redrawTemp()
 			fmt.Print("\033[?25l")
 		}
 	}

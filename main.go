@@ -19,11 +19,14 @@ type message struct {
 }
 
 type config struct {
-	maxTokens int
-	system    string
-	stop      string
-	format    string
-	compare   string
+	maxTokens   int
+	temperature float64
+	system      string
+	stop        string
+	format      string
+	compare     string
+	tempCompare string
+	verbose     bool
 }
 
 // ─── Markdown rendering ───────────────────────────────────────────────────────
@@ -64,6 +67,12 @@ func main() {
 		return
 	}
 
+	if cfg.tempCompare != "" {
+		scanner := bufio.NewScanner(os.Stdin)
+		runTempComparison(apiKey, cfg, cfg.tempCompare, scanner)
+		return
+	}
+
 	printBanner(cfg)
 	runChat(apiKey, cfg)
 }
@@ -74,7 +83,10 @@ func parseArgs() config {
 	flag.StringVar(&cfg.system, "system", "", "system prompt")
 	flag.StringVar(&cfg.stop, "stop", "", "stop sequence")
 	flag.StringVar(&cfg.format, "format", "", "response format instruction")
+	flag.Float64Var(&cfg.temperature, "temperature", -1, "sampling temperature (0.0–1.0, default: API default)")
 	flag.StringVar(&cfg.compare, "compare", "", "run 4-way comparison and exit")
+	flag.StringVar(&cfg.tempCompare, "tempcompare", "", "run 3-way temperature comparison and exit")
+	flag.BoolVar(&cfg.verbose, "verbose", false, "print each request as curl before sending")
 	flag.Parse()
 	return cfg
 }
@@ -86,11 +98,17 @@ func printBanner(cfg config) {
 	if cfg.system != "" {
 		fmt.Printf("System:     %s\n", cfg.system)
 	}
+	if cfg.temperature >= 0 {
+		fmt.Printf("Temperature:%.1f\n", cfg.temperature)
+	}
 	if cfg.stop != "" {
 		fmt.Printf("Stop:       %q\n", cfg.stop)
 	}
 	if cfg.format != "" {
 		fmt.Printf("Format:     %s\n", cfg.format)
+	}
+	if cfg.verbose {
+		fmt.Printf("Verbose:    on (curl output to stderr)\n")
 	}
 	fmt.Println()
 	fmt.Println("Type /help for commands, \"exit\" or \"quit\" to quit.")
@@ -103,6 +121,7 @@ func printHelp() {
 	fmt.Println("  /clear               — reset conversation history")
 	fmt.Println("  /system <text>       — update system prompt")
 	fmt.Println("  /compare <question>  — stream 4 reasoning approaches side-by-side")
+	fmt.Println("  /temp <question>     — compare temperature 0 / 0.7 / 1.0 side-by-side")
 	fmt.Println("  exit / quit          — quit")
 	fmt.Println()
 	fmt.Println("Flags (set at startup):")
@@ -110,7 +129,10 @@ func printHelp() {
 	fmt.Println("  --system string     system prompt")
 	fmt.Println("  --stop string       stop sequence")
 	fmt.Println("  --format string     response format instruction")
+	fmt.Println("  --temperature float  sampling temperature (0.0–1.0)")
 	fmt.Println("  --compare string    run 4-way comparison directly and exit")
+	fmt.Println("  --tempcompare str   run 3-way temperature comparison and exit")
+	fmt.Println("  --verbose           print each request as curl before sending")
 	fmt.Println()
 }
 
@@ -163,6 +185,11 @@ func runChat(apiKey string, cfg config) {
 			runComparison(apiKey, cfg, question, scanner)
 			printBanner(cfg)
 			continue
+		case strings.HasPrefix(input, "/temp "):
+			question := strings.TrimPrefix(input, "/temp ")
+			runTempComparison(apiKey, cfg, question, scanner)
+			printBanner(cfg)
+			continue
 		}
 
 		history = append(history, message{Role: "user", Content: input})
@@ -190,6 +217,9 @@ func buildRequest(cfg config, msgs []message) map[string]any {
 		"stream":     true,
 	}
 
+	if cfg.temperature >= 0 {
+		req["temperature"] = cfg.temperature
+	}
 	if sp := buildSystemPrompt(cfg); sp != "" {
 		req["system"] = sp
 	}
@@ -200,8 +230,35 @@ func buildRequest(cfg config, msgs []message) map[string]any {
 	return req
 }
 
+func maskKey(key string) string {
+	if len(key) <= 8 {
+		return "****"
+	}
+	return key[:8] + "****"
+}
+
+func formatCurl(apiKey string, body []byte) string {
+	var pretty bytes.Buffer
+	json.Indent(&pretty, body, "  ", "  ")
+	var b strings.Builder
+	fmt.Fprintf(&b, "curl -X POST .../v1/messages \\\n")
+	fmt.Fprintf(&b, "  -H \"x-api-key: %s\" \\\n", maskKey(apiKey))
+	fmt.Fprintf(&b, "  -d '%s'\n", pretty.String())
+	return b.String()
+}
+
+func printCurl(apiKey string, body []byte) {
+	fmt.Fprintf(os.Stderr, "\n\033[2m── curl ────────────────────────────────────────────────────\033[0m\n")
+	fmt.Fprintf(os.Stderr, "\033[2m%s\033[0m", formatCurl(apiKey, body))
+	fmt.Fprintf(os.Stderr, "\033[2m────────────────────────────────────────────────────────────\033[0m\n\n")
+}
+
 func streamChat(apiKey string, cfg config, msgs []message) (string, error) {
 	body, _ := json.Marshal(buildRequest(cfg, msgs))
+
+	if cfg.verbose {
+		printCurl(apiKey, body)
+	}
 
 	req, _ := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
 	req.Header.Set("x-api-key", apiKey)
