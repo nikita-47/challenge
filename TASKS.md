@@ -88,6 +88,33 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 5 — Model version comparison ✅
+
+**Assignment:** Send the same query to weak/medium/strong models, measure response time, token count, cost, and compare quality.
+
+**Models used:**
+- Weak: Qwen2.5-Coder-14B (LM Studio, localhost:1234, free)
+- Medium: GPT-4o-mini (OpenAI API, $0.15/$0.60 per 1M tokens)
+- Strong: Claude Sonnet 4.5 (Anthropic API, $3.00/$15.00 per 1M tokens)
+
+**What was built on top of Day 4:**
+- `OPENAI_API_KEY` loading from `.env`
+- `modelInfo` struct — describes a model (name, provider, baseURL, apiKey, model, cost)
+- `buildOpenAIRequest()` — builds OpenAI-compatible chat completions request body
+- `/models <question>` command — streams the same question to all 3 models in a 3-column split-screen TUI
+- `--models` flag — run model comparison directly from CLI
+- `metrics` struct — tracks duration, input/output tokens, cost per model
+- `newModelScreen()` / `drawModelBorders()` / `redrawModel()` — 3-column TUI layout for model comparison
+- `streamToPanelOpenAI()` — streams OpenAI-compatible API (OpenAI + LM Studio) to panel, extracts token usage
+- `streamToPanelAnthropic()` — streams Anthropic API to panel, extracts input/output tokens from SSE events
+- `runModelComparison()` — orchestrator: 3 goroutines, one per model, with Ctrl+C cancellation
+- `printComparisonTable()` — renders ASCII table with time, tokens, cost, provider after streaming completes
+- Token extraction: Anthropic SSE (`message_start`/`message_delta`), OpenAI SSE (`stream_options.include_usage`), LM Studio fallback (~4 chars per token)
+
+**Key code:** `runModelComparison()`, `streamToPanelOpenAI()`, `streamToPanelAnthropic()`, `printComparisonTable()`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

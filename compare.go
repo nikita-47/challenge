@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -622,4 +623,396 @@ func runTempComparison(apiKey string, cfg config, question string, scanner *bufi
 	fmt.Print("\033[?25h")
 	_, h := termSize()
 	fmt.Printf("\033[%d;1H\n", h)
+}
+
+// ─── Model comparison ────────────────────────────────────────────────────────
+
+type metrics struct {
+	model        string
+	provider     string
+	duration     time.Duration
+	inputTokens  int
+	outputTokens int
+	costIn       float64
+	costOut      float64
+}
+
+func (m *metrics) totalCost() float64 {
+	return float64(m.inputTokens)*m.costIn/1e6 + float64(m.outputTokens)*m.costOut/1e6
+}
+
+func newModelScreen(question string) *splitScreen {
+	w, h := termSize()
+	third := w / 3
+
+	panelH := h - 6
+	if panelH < 3 {
+		panelH = 3
+	}
+
+	questR := panelH + 3
+	sepR := panelH + 5
+	statusR := panelH + 6
+
+	panels := [4]*panel{
+		{title: "Qwen2.5-1.5B (local)", color: "\033[94m", r0: 2, c0: 2, w: third - 1, h: panelH},
+		{title: "GPT-4o-mini", color: "\033[92m", r0: 2, c0: third + 2, w: third - 1, h: panelH},
+		{title: "Claude Sonnet", color: "\033[93m", r0: 2, c0: 2*third + 2, w: w - 2*third - 2, h: panelH},
+		{},
+	}
+
+	ss := &splitScreen{
+		panels: panels, panelCount: 3, termW: w, half: third, panelH: panelH,
+		midRow: 0, questR: questR, sepR: sepR, statusR: statusR,
+		question: question,
+	}
+
+	fmt.Print("\033[2J\033[H\033[?25l")
+	ss.drawModelBorders()
+
+	ss.drawQuestion()
+	fmt.Printf("\033[%d;1H%s", sepR, strings.Repeat("─", w))
+	fmt.Printf("\033[%d;1HStreaming from 3 models... (Ctrl+C to cancel)", statusR)
+
+	return ss
+}
+
+func (ss *splitScreen) drawModelBorders() {
+	w := ss.termW
+	third := ss.half
+	panelH := ss.panelH
+
+	h1 := strings.Repeat("─", third-1)
+	h2 := strings.Repeat("─", third-1)
+	h3 := strings.Repeat("─", w-2*third-2)
+
+	fmt.Printf("\033[1;1H┌%s┬%s┬%s┐", h1, h2, h3)
+	for r := 2; r <= panelH+1; r++ {
+		fmt.Printf("\033[%d;1H│\033[%d;%dH│\033[%d;%dH│\033[%d;%dH│",
+			r, r, third+1, r, 2*third+1, r, w)
+	}
+	fmt.Printf("\033[%d;1H└%s┴%s┴%s┘", panelH+2, h1, h2, h3)
+
+	titles := [3]struct{ col int; color, name string }{
+		{3, ss.panels[0].color, ss.panels[0].title},
+		{third + 3, ss.panels[1].color, ss.panels[1].title},
+		{2*third + 3, ss.panels[2].color, ss.panels[2].title},
+	}
+	for _, t := range titles {
+		fmt.Printf("\033[1;%dH%s %s \033[0m", t.col, t.color, t.name)
+	}
+}
+
+func (ss *splitScreen) redrawModel() {
+	fmt.Print("\033[2J\033[H\033[?25l")
+	ss.drawModelBorders()
+
+	ss.drawQuestion()
+	fmt.Printf("\033[%d;1H%s", ss.sepR, strings.Repeat("─", ss.termW))
+
+	for i := 0; i < 3; i++ {
+		p := ss.panels[i]
+		content := p.buf.String()
+		p.cr, p.cc = 0, 0
+		p.lines = nil
+		p.curLine.Reset()
+		p.buf.Reset()
+		var out strings.Builder
+		ss.writeInto(p, content, &out)
+		fmt.Print(out.String())
+	}
+	fmt.Printf("\033[%d;1H", ss.statusR)
+}
+
+func streamToPanelOpenAI(ctx context.Context, baseURL, apiKey, model string, cfg config, msgs []message, ss *splitScreen, p *panel) (string, *metrics, error) {
+	m := &metrics{model: model, costIn: 0, costOut: 0}
+	start := time.Now()
+
+	body, _ := json.Marshal(buildOpenAIRequest(model, cfg, msgs))
+
+	req, err := http.NewRequestWithContext(ctx, "POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		ss.write(p, "Error: "+err.Error())
+		return "", m, err
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		if ctx.Err() == nil {
+			ss.write(p, "Error: "+err.Error())
+		}
+		m.duration = time.Since(start)
+		return "", m, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		ss.write(p, fmt.Sprintf("API error (%d): %s", resp.StatusCode, string(b)))
+		m.duration = time.Since(start)
+		return "", m, fmt.Errorf("API error %d: %s", resp.StatusCode, b)
+	}
+
+	var full strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			break
+		}
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+
+		var event struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+			Usage *struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+			} `json:"usage"`
+		}
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+		if len(event.Choices) > 0 && event.Choices[0].Delta.Content != "" {
+			text := event.Choices[0].Delta.Content
+			ss.write(p, text)
+			full.WriteString(text)
+		}
+		if event.Usage != nil {
+			m.inputTokens = event.Usage.PromptTokens
+			m.outputTokens = event.Usage.CompletionTokens
+		}
+	}
+
+	m.duration = time.Since(start)
+
+	// Fallback: estimate output tokens from character count if not reported
+	if m.outputTokens == 0 && full.Len() > 0 {
+		m.outputTokens = full.Len() / 4
+	}
+
+	return full.String(), m, scanner.Err()
+}
+
+func streamToPanelAnthropic(ctx context.Context, apiKey string, cfg config, msgs []message, ss *splitScreen, p *panel) (string, *metrics, error) {
+	m := &metrics{model: "claude-sonnet-4-5-20250929"}
+	start := time.Now()
+
+	body, _ := json.Marshal(buildRequest(cfg, msgs))
+
+	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+	if err != nil {
+		ss.write(p, "Error: "+err.Error())
+		return "", m, err
+	}
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("content-type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		if ctx.Err() == nil {
+			ss.write(p, "Error: "+err.Error())
+		}
+		m.duration = time.Since(start)
+		return "", m, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		b, _ := io.ReadAll(resp.Body)
+		ss.write(p, fmt.Sprintf("API error (%d)", resp.StatusCode))
+		m.duration = time.Since(start)
+		return "", m, fmt.Errorf("API error %d: %s", resp.StatusCode, b)
+	}
+
+	var full strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		if ctx.Err() != nil {
+			break
+		}
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+
+		var raw json.RawMessage
+		var event struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal([]byte(data), &raw); err != nil {
+			continue
+		}
+		if err := json.Unmarshal(raw, &event); err != nil {
+			continue
+		}
+
+		switch event.Type {
+		case "message_start":
+			var ms struct {
+				Message struct {
+					Usage struct {
+						InputTokens int `json:"input_tokens"`
+					} `json:"usage"`
+				} `json:"message"`
+			}
+			json.Unmarshal(raw, &ms)
+			m.inputTokens = ms.Message.Usage.InputTokens
+
+		case "content_block_delta":
+			var cbd struct {
+				Delta struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"delta"`
+			}
+			json.Unmarshal(raw, &cbd)
+			if cbd.Delta.Type == "text_delta" {
+				ss.write(p, cbd.Delta.Text)
+				full.WriteString(cbd.Delta.Text)
+			}
+
+		case "message_delta":
+			var md struct {
+				Usage struct {
+					OutputTokens int `json:"output_tokens"`
+				} `json:"usage"`
+			}
+			json.Unmarshal(raw, &md)
+			m.outputTokens = md.Usage.OutputTokens
+		}
+	}
+
+	m.duration = time.Since(start)
+	return full.String(), m, scanner.Err()
+}
+
+func printComparisonTable(results [3]*metrics) {
+	fmt.Println()
+	fmt.Println("┌───────────────────────┬──────────┬────────────┬─────────────┬───────────┐")
+	fmt.Println("│ Model                 │ Time     │ Tokens I/O │ Cost        │ Provider  │")
+	fmt.Println("├───────────────────────┼──────────┼────────────┼─────────────┼───────────┤")
+	for _, m := range results {
+		if m == nil {
+			continue
+		}
+		name := m.model
+		if len(name) > 21 {
+			name = name[:21]
+		}
+		dur := fmt.Sprintf("%.1fs", m.duration.Seconds())
+		tokens := fmt.Sprintf("%d/%d", m.inputTokens, m.outputTokens)
+		cost := fmt.Sprintf("$%.6f", m.totalCost())
+		fmt.Printf("│ %-21s │ %-8s │ %-10s │ %-11s │ %-9s │\n", name, dur, tokens, cost, m.provider)
+	}
+	fmt.Println("└───────────────────────┴──────────┴────────────┴─────────────┴───────────┘")
+	fmt.Println()
+}
+
+func runModelComparison(anthropicKey, openaiKey string, cfg config, question string, scanner *bufio.Scanner) {
+	ss := newModelScreen(question)
+	defer ss.cleanup()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	go func() {
+		select {
+		case <-sigCh:
+			ss.setStatus("Cancelling...")
+			cancel()
+		case <-ctx.Done():
+		}
+		signal.Stop(sigCh)
+	}()
+
+	models := [3]modelInfo{
+		{name: "Qwen2.5-1.5B (local)", provider: "Local", baseURL: "http://localhost:1234", model: "qwen2.5-coder-1.5b-instruct", costIn: 0, costOut: 0},
+		{name: "GPT-4o-mini", provider: "OpenAI", baseURL: "https://api.openai.com", apiKey: openaiKey, model: "gpt-4o-mini", costIn: 0.15, costOut: 0.60},
+		{name: "Claude Sonnet", provider: "Anthropic", apiKey: anthropicKey, model: "claude-sonnet-4-5-20250929", costIn: 3.00, costOut: 15.00},
+	}
+
+	var results [3]*metrics
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	for i := 0; i < 3; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			p := ss.panels[idx]
+			mi := models[idx]
+			msgs := []message{{Role: "user", Content: question}}
+
+			var m *metrics
+			if mi.provider == "Anthropic" {
+				_, m, _ = streamToPanelAnthropic(ctx, mi.apiKey, cfg, msgs, ss, p)
+			} else {
+				_, m, _ = streamToPanelOpenAI(ctx, mi.baseURL, mi.apiKey, mi.model, cfg, msgs, ss, p)
+			}
+
+			if m != nil {
+				m.model = mi.name
+				m.provider = mi.provider
+				m.costIn = mi.costIn
+				m.costOut = mi.costOut
+			}
+			mu.Lock()
+			results[idx] = m
+			mu.Unlock()
+			ss.markDone()
+		}(i)
+	}
+
+	wg.Wait()
+
+	wasCancelled := ctx.Err() != nil
+	cancel()
+
+	for {
+		msg := "Done! Press 1-3 to view panel, Enter to see comparison table."
+		if wasCancelled {
+			msg = "Cancelled. Press 1-3 to view panel, Enter to see comparison table."
+		}
+		ss.setStatus(msg)
+		fmt.Print("\033[?25h")
+		scanner.Scan()
+		input := strings.TrimSpace(scanner.Text())
+
+		if input == "" {
+			break
+		}
+		if len(input) == 1 && input[0] >= '1' && input[0] <= '3' {
+			ss.viewPanel(int(input[0] - '1'))
+			scanner.Scan()
+			ss.redrawModel()
+			fmt.Print("\033[?25l")
+		}
+	}
+
+	// Show comparison table after exiting split view
+	fmt.Print("\033[?25h\033[2J\033[H")
+	fmt.Printf("Question: %s\n", question)
+	printComparisonTable(results)
+	fmt.Println("Press Enter to continue...")
+	scanner.Scan()
 }

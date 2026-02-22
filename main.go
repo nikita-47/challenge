@@ -19,14 +19,25 @@ type message struct {
 }
 
 type config struct {
-	maxTokens   int
-	temperature float64
-	system      string
-	stop        string
-	format      string
-	compare     string
-	tempCompare string
-	verbose     bool
+	maxTokens    int
+	temperature  float64
+	system       string
+	stop         string
+	format       string
+	compare      string
+	tempCompare  string
+	modelCompare string
+	verbose      bool
+}
+
+type modelInfo struct {
+	name     string
+	provider string
+	baseURL  string
+	apiKey   string
+	model    string
+	costIn   float64 // cost per 1M input tokens
+	costOut  float64 // cost per 1M output tokens
 }
 
 // ─── Markdown rendering ───────────────────────────────────────────────────────
@@ -60,6 +71,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "ANTHROPIC_API_KEY not set in .env")
 		os.Exit(1)
 	}
+	openaiKey := loadEnv(".env", "OPENAI_API_KEY")
 
 	if cfg.compare != "" {
 		scanner := bufio.NewScanner(os.Stdin)
@@ -73,8 +85,14 @@ func main() {
 		return
 	}
 
-	printBanner(cfg)
-	runChat(apiKey, cfg)
+	if cfg.modelCompare != "" {
+		scanner := bufio.NewScanner(os.Stdin)
+		runModelComparison(apiKey, openaiKey, cfg, cfg.modelCompare, scanner)
+		return
+	}
+
+	printBanner(cfg, openaiKey)
+	runChat(apiKey, openaiKey, cfg)
 }
 
 func parseArgs() config {
@@ -86,12 +104,13 @@ func parseArgs() config {
 	flag.Float64Var(&cfg.temperature, "temperature", -1, "sampling temperature (0.0–1.0, default: API default)")
 	flag.StringVar(&cfg.compare, "compare", "", "run 4-way comparison and exit")
 	flag.StringVar(&cfg.tempCompare, "tempcompare", "", "run 3-way temperature comparison and exit")
+	flag.StringVar(&cfg.modelCompare, "models", "", "run 3-way model comparison and exit")
 	flag.BoolVar(&cfg.verbose, "verbose", false, "print each request as curl before sending")
 	flag.Parse()
 	return cfg
 }
 
-func printBanner(cfg config) {
+func printBanner(cfg config, openaiKey string) {
 	fmt.Println("=== Claude CLI Chat ===")
 	fmt.Printf("Model:      claude-sonnet-4-5-20250929\n")
 	fmt.Printf("Max tokens: %d\n", cfg.maxTokens)
@@ -110,6 +129,9 @@ func printBanner(cfg config) {
 	if cfg.verbose {
 		fmt.Printf("Verbose:    on (curl output to stderr)\n")
 	}
+	if openaiKey != "" {
+		fmt.Printf("OpenAI:     loaded\n")
+	}
 	fmt.Println()
 	fmt.Println("Type /help for commands, \"exit\" or \"quit\" to quit.")
 	fmt.Println()
@@ -122,6 +144,7 @@ func printHelp() {
 	fmt.Println("  /system <text>       — update system prompt")
 	fmt.Println("  /compare <question>  — stream 4 reasoning approaches side-by-side")
 	fmt.Println("  /temp <question>     — compare temperature 0 / 0.7 / 1.0 side-by-side")
+	fmt.Println("  /models <question>   — compare weak/medium/strong models side-by-side")
 	fmt.Println("  exit / quit          — quit")
 	fmt.Println()
 	fmt.Println("Flags (set at startup):")
@@ -132,6 +155,7 @@ func printHelp() {
 	fmt.Println("  --temperature float  sampling temperature (0.0–1.0)")
 	fmt.Println("  --compare string    run 4-way comparison directly and exit")
 	fmt.Println("  --tempcompare str   run 3-way temperature comparison and exit")
+	fmt.Println("  --models string     run 3-way model comparison and exit")
 	fmt.Println("  --verbose           print each request as curl before sending")
 	fmt.Println()
 }
@@ -150,7 +174,7 @@ func buildSystemPrompt(cfg config) string {
 	return strings.Join(parts, "\n")
 }
 
-func runChat(apiKey string, cfg config) {
+func runChat(apiKey, openaiKey string, cfg config) {
 	scanner := bufio.NewScanner(os.Stdin)
 	var history []message
 
@@ -183,12 +207,17 @@ func runChat(apiKey string, cfg config) {
 		case strings.HasPrefix(input, "/compare "):
 			question := strings.TrimPrefix(input, "/compare ")
 			runComparison(apiKey, cfg, question, scanner)
-			printBanner(cfg)
+			printBanner(cfg, openaiKey)
 			continue
 		case strings.HasPrefix(input, "/temp "):
 			question := strings.TrimPrefix(input, "/temp ")
 			runTempComparison(apiKey, cfg, question, scanner)
-			printBanner(cfg)
+			printBanner(cfg, openaiKey)
+			continue
+		case strings.HasPrefix(input, "/models "):
+			question := strings.TrimPrefix(input, "/models ")
+			runModelComparison(apiKey, openaiKey, cfg, question, scanner)
+			printBanner(cfg, openaiKey)
 			continue
 		}
 
@@ -225,6 +254,33 @@ func buildRequest(cfg config, msgs []message) map[string]any {
 	}
 	if cfg.stop != "" {
 		req["stop_sequences"] = []string{cfg.stop}
+	}
+
+	return req
+}
+
+func buildOpenAIRequest(model string, cfg config, msgs []message) map[string]any {
+	openaiMsgs := make([]map[string]string, 0, len(msgs)+1)
+	if sp := buildSystemPrompt(cfg); sp != "" {
+		openaiMsgs = append(openaiMsgs, map[string]string{"role": "system", "content": sp})
+	}
+	for _, m := range msgs {
+		openaiMsgs = append(openaiMsgs, map[string]string{"role": m.Role, "content": m.Content})
+	}
+
+	req := map[string]any{
+		"model":          model,
+		"max_tokens":     cfg.maxTokens,
+		"messages":       openaiMsgs,
+		"stream":         true,
+		"stream_options": map[string]any{"include_usage": true},
+	}
+
+	if cfg.temperature >= 0 {
+		req["temperature"] = cfg.temperature
+	}
+	if cfg.stop != "" {
+		req["stop"] = []string{cfg.stop}
 	}
 
 	return req
