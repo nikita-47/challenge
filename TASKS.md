@@ -115,6 +115,26 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 6 — First Agent with Tools ✅
+
+**Assignment:** Build an agentic loop: LLM decides which tool to call, executes it, gets the result, and repeats until the goal is achieved or max turns reached.
+
+**What was built on top of Day 5:**
+- `agent.go` — new file (~170 lines) with `Agent` struct and agentic loop
+- `agentMessage`, `contentBlock`, `toolDef`, `apiResponse` types for non-streaming tool_use API
+- Two tools: `run_shell` (executes `/bin/sh -c` commands) and `read_file` (reads file contents)
+- `executeTool()` — dispatcher that routes tool calls to shell or file read
+- `(*Agent).callAPI()` — non-streaming POST to Anthropic API with tool definitions
+- `(*Agent).Run(goal)` — agentic loop: sends goal → processes tool_use blocks → returns final text
+- Max 10 turns, colored terminal output: goal (bold), turns (dim), tool calls (yellow), results (dim)
+- `--agent` flag — run agent from CLI and exit
+- `/agent <task>` chat command — run agent from interactive chat
+- `truncate()` helper for single-line display of long results
+
+**Key code:** `newAgent()`, `Agent.Run()`, `executeTool()`, `defaultTools()`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

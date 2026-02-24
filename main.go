@@ -27,6 +27,7 @@ type config struct {
 	compare      string
 	tempCompare  string
 	modelCompare string
+	agent        string
 	verbose      bool
 }
 
@@ -91,6 +92,17 @@ func main() {
 		return
 	}
 
+	if cfg.agent != "" {
+		agent := newAgent(apiKey)
+		result, err := agent.Run(cfg.agent)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Agent error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(renderMarkdown(result))
+		return
+	}
+
 	printBanner(cfg, openaiKey)
 	runChat(apiKey, openaiKey, cfg)
 }
@@ -105,6 +117,7 @@ func parseArgs() config {
 	flag.StringVar(&cfg.compare, "compare", "", "run 4-way comparison and exit")
 	flag.StringVar(&cfg.tempCompare, "tempcompare", "", "run 3-way temperature comparison and exit")
 	flag.StringVar(&cfg.modelCompare, "models", "", "run 3-way model comparison and exit")
+	flag.StringVar(&cfg.agent, "agent", "", "run agent with tools and exit")
 	flag.BoolVar(&cfg.verbose, "verbose", false, "print each request as curl before sending")
 	flag.Parse()
 	return cfg
@@ -145,6 +158,7 @@ func printHelp() {
 	fmt.Println("  /compare <question>  — stream 4 reasoning approaches side-by-side")
 	fmt.Println("  /temp <question>     — compare temperature 0 / 0.7 / 1.0 side-by-side")
 	fmt.Println("  /models <question>   — compare weak/medium/strong models side-by-side")
+	fmt.Println("  /agent <task>        — run agent with tools (shell, file read)")
 	fmt.Println("  exit / quit          — quit")
 	fmt.Println()
 	fmt.Println("Flags (set at startup):")
@@ -156,6 +170,7 @@ func printHelp() {
 	fmt.Println("  --compare string    run 4-way comparison directly and exit")
 	fmt.Println("  --tempcompare str   run 3-way temperature comparison and exit")
 	fmt.Println("  --models string     run 3-way model comparison and exit")
+	fmt.Println("  --agent string      run agent with tools and exit")
 	fmt.Println("  --verbose           print each request as curl before sending")
 	fmt.Println()
 }
@@ -218,6 +233,18 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			question := strings.TrimPrefix(input, "/models ")
 			runModelComparison(apiKey, openaiKey, cfg, question, scanner)
 			printBanner(cfg, openaiKey)
+			continue
+		case strings.HasPrefix(input, "/agent "):
+			task := strings.TrimPrefix(input, "/agent ")
+			agent := newAgent(apiKey)
+			result, err := agent.Run(task)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Agent error: %v\n\n", err)
+			} else {
+				fmt.Print("Claude: ")
+				fmt.Println(renderMarkdown(result))
+				fmt.Println()
+			}
 			continue
 		}
 

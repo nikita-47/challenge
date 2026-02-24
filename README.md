@@ -13,13 +13,13 @@ A minimal interactive CLI chat tool that streams responses from Claude via the A
 
 3. **Run:**
    ```
-   go run main.go
+   go run .
    ```
 
 ## Usage
 
 ```
-go run main.go [flags]
+go run . [flags]
 ```
 
 ### Flags
@@ -30,6 +30,12 @@ go run main.go [flags]
 | `--system string` | — | System prompt to set Claude's behavior |
 | `--stop string` | — | Stop sequence — Claude stops generating when it hits this string |
 | `--format string` | — | Format instruction appended to system prompt |
+| `--temperature float` | API default | Sampling temperature (0.0–1.0) |
+| `--compare string` | — | Run 4-way reasoning comparison and exit |
+| `--tempcompare string` | — | Run 3-way temperature comparison and exit |
+| `--models string` | — | Run 3-way model comparison and exit |
+| `--agent string` | — | Run agent with tools (shell, file read) and exit |
+| `--verbose` | `false` | Print each request as curl before sending |
 
 ### In-session commands
 
@@ -38,6 +44,10 @@ go run main.go [flags]
 | `/help` | Show commands and flag reference |
 | `/clear` | Reset conversation history |
 | `/system <text>` | Change the system prompt mid-conversation |
+| `/compare <question>` | Stream 4 reasoning approaches side-by-side |
+| `/temp <question>` | Compare temperature 0 / 0.7 / 1.0 side-by-side |
+| `/models <question>` | Compare weak/medium/strong models side-by-side |
+| `/agent <task>` | Run agent with tools (shell, file read) |
 | `exit` / `quit` | Quit |
 
 ---
@@ -53,7 +63,7 @@ The same question, sent twice — once with no flags, once with format, length, 
 ### Without constraints
 
 ```
-go run main.go
+go run .
 ```
 
 ```
@@ -107,7 +117,7 @@ Verbose, free-form, covers everything — 250+ tokens, no fixed structure.
 ### With constraints
 
 ```
-go run main.go \
+go run . \
   --format "exactly 3 bullet points, each one sentence" \
   --max-tokens 120 \
   --stop "---"
@@ -150,7 +160,7 @@ Three bullets, one sentence each — token budget enforced, generation cut at `-
 ### Basic chat
 
 ```
-go run main.go
+go run .
 ```
 
 ```
@@ -175,7 +185,7 @@ Goodbye!
 Limit responses to roughly a sentence or two:
 
 ```
-go run main.go --max-tokens 100
+go run . --max-tokens 100
 ```
 
 ```
@@ -193,7 +203,7 @@ other, regardless of the distance between them.
 Give Claude a persona or set of instructions:
 
 ```
-go run main.go --system "You are a senior Go engineer. Be concise and precise. Only discuss Go."
+go run . --system "You are a senior Go engineer. Be concise and precise. Only discuss Go."
 ```
 
 ```
@@ -216,7 +226,7 @@ Claude: Use bufio.Scanner:
 Ask Claude to always respond in a specific structure:
 
 ```
-go run main.go --format "JSON with keys: answer, confidence (0-1), sources (list)"
+go run . --format "JSON with keys: answer, confidence (0-1), sources (list)"
 ```
 
 ```
@@ -236,7 +246,7 @@ Claude: {
 Stop generation at a specific string — useful for templated outputs:
 
 ```
-go run main.go --stop "###"
+go run . --stop "###"
 ```
 
 ```
@@ -255,7 +265,7 @@ Claude is instructed to end with `###`, but the API intercepts that string and s
 Role-play a pirate assistant that gives bullet-point answers and stops at `DONE`:
 
 ```
-go run main.go \
+go run . \
   --system "You are a pirate assistant. Stay in character." \
   --format "bullet points" \
   --stop "DONE" \
@@ -287,7 +297,7 @@ DONE
 Start general, then pivot:
 
 ```
-go run main.go
+go run .
 ```
 
 ```
@@ -322,3 +332,44 @@ You: What is my name?
 Claude: I don't have any information about your name. Could you tell me?
 ```
 (History was wiped — Claude has no memory of the earlier exchange.)
+
+---
+
+## Agent mode
+
+The agent has an agentic loop: Claude decides which tool to call, executes it, gets the result, and repeats until the goal is achieved (up to 10 turns). Two tools are available: `run_shell` (execute shell commands) and `read_file` (read file contents).
+
+### From CLI
+
+```
+go run . --agent "Count lines of code in each .go file"
+```
+
+```
+[Agent] Goal: Count lines of code in each .go file
+[Agent] Turn 1/10 — calling API...
+[Agent] Tool: run_shell
+[Agent]   $ wc -l *.go
+[Agent]   Result:  170 agent.go  430 compare.go  300 main.go  900 total
+[Agent] Done after 2 turn(s).
+
+Claude: The project has 3 Go files with 900 total lines:
+• agent.go — 170 lines
+• compare.go — 430 lines
+• main.go — 300 lines
+```
+
+### From interactive chat
+
+```
+You: /agent Read TASKS.md and tell me how many days are completed
+
+[Agent] Goal: Read TASKS.md and tell me how many days are completed
+[Agent] Turn 1/10 — calling API...
+[Agent] Tool: read_file
+[Agent]   path: TASKS.md
+[Agent]   Result: # Daily Tasks  Each day's assignment...
+[Agent] Done after 2 turn(s).
+
+Claude: 6 days are completed (Day 1 through Day 6), all marked with ✅.
+```

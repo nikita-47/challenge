@@ -5,8 +5,9 @@ See `TASKS.md` for all daily assignments and their status.
 
 ## Project structure
 
-- `main.go` — app entry, chat loop, API client, markdown rendering (~290 lines)
+- `main.go` — app entry, chat loop, API client, markdown rendering (~300 lines)
 - `compare.go` — split-screen TUI, panel rendering, comparison orchestrator (~430 lines)
+- `agent.go` — agentic loop with tool_use (run_shell, read_file) (~170 lines)
 - `TASKS.md` — daily task log (assignments, status, notes)
 - `.env` — stores `ANTHROPIC_API_KEY` (not committed)
 
@@ -27,6 +28,7 @@ go run . [flags]
 | `--stop string` | — | Stop sequence (sent as `stop_sequences` array) |
 | `--temperature float` | API default | Sampling temperature (0.0–1.0) |
 | `--format string` | — | Format instruction appended to system prompt |
+| `--agent string` | — | Run agent with tools (shell, file read) and exit |
 
 Example:
 ```
@@ -41,11 +43,12 @@ go run . --max-tokens 200 --format "bullet points" --stop "END"
 | `/clear` | Reset conversation history |
 | `/system <text>` | Update system prompt mid-session |
 | `/temp <question>` | Compare temperature 0 / 0.7 / 1.0 side-by-side |
+| `/agent <task>` | Run agent with tools (shell, file read) |
 | `exit` / `quit` | Quit |
 
 ## Key decisions
 
-- **Two files**: `main.go` (chat/API) and `compare.go` (split-screen TUI) — keep it that way
+- **Three files**: `main.go` (chat/API), `compare.go` (split-screen TUI), `agent.go` (agentic loop)
 - **No external deps**: uses only Go stdlib (net/http, encoding/json, etc.)
 - **`.env` loading**: hand-rolled parser, no third-party dotenv library
 - **Model**: claude-sonnet-4-5-20250929
@@ -59,3 +62,4 @@ go run . --max-tokens 200 --format "bullet points" --stop "END"
 - No external dependencies unless absolutely necessary
 - `.env` must never be committed
 - Before starting a new day's task, read `TASKS.md` to understand what was built before
+- Every new feature/tool must be accessible both from interactive chat (`/command`) and from CLI (`--flag`) so it can be used non-interactively
