@@ -5,9 +5,13 @@ See `TASKS.md` for all daily assignments and their status.
 
 ## Project structure
 
-- `main.go` — app entry, chat loop, API client, markdown rendering (~300 lines)
-- `compare.go` — split-screen TUI, panel rendering, comparison orchestrator (~430 lines)
-- `agent.go` — agentic loop with tool_use (run_shell, read_file) (~170 lines)
+- `main.go` — app entry, CLI flags, config, banner, help (~120 lines)
+- `chat.go` — interactive chat REPL loop (~80 lines)
+- `api.go` — API client, request building, SSE streaming (~160 lines)
+- `render.go` — ANSI markdown rendering (~25 lines)
+- `env.go` — .env file loader (~20 lines)
+- `compare.go` — split-screen TUI, panel rendering, comparison orchestrator (~1000 lines)
+- `agent.go` — agentic loop with tool_use (run_shell, read_file) (~240 lines)
 - `TASKS.md` — daily task log (assignments, status, notes)
 - `.env` — stores `ANTHROPIC_API_KEY` (not committed)
 
@@ -48,7 +52,7 @@ go run . --max-tokens 200 --format "bullet points" --stop "END"
 
 ## Key decisions
 
-- **Three files**: `main.go` (chat/API), `compare.go` (split-screen TUI), `agent.go` (agentic loop)
+- **File layout**: `main.go` (entry/CLI), `chat.go` (REPL), `api.go` (API client), `render.go` (markdown), `env.go` (.env), `compare.go` (TUI), `agent.go` (agent)
 - **No external deps**: uses only Go stdlib (net/http, encoding/json, etc.)
 - **`.env` loading**: hand-rolled parser, no third-party dotenv library
 - **Model**: claude-sonnet-4-5-20250929
