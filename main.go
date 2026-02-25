@@ -17,6 +17,7 @@ type config struct {
 	tempCompare  string
 	modelCompare string
 	agent        string
+	session      string
 	verbose      bool
 }
 
@@ -74,6 +75,7 @@ func parseArgs() config {
 	flag.StringVar(&cfg.tempCompare, "tempcompare", "", "run 3-way temperature comparison and exit")
 	flag.StringVar(&cfg.modelCompare, "models", "", "run 3-way model comparison and exit")
 	flag.StringVar(&cfg.agent, "agent", "", "run agent with tools and exit")
+	flag.StringVar(&cfg.session, "session", "", "session name for chat history")
 	flag.BoolVar(&cfg.verbose, "verbose", false, "print each request as curl before sending")
 	flag.Parse()
 	return cfg
@@ -98,6 +100,9 @@ func printBanner(cfg config, openaiKey string) {
 	if cfg.verbose {
 		fmt.Printf("Verbose:    on (curl output to stderr)\n")
 	}
+	if cfg.session != "" {
+		fmt.Printf("Session:    %s\n", cfg.session)
+	}
 	if openaiKey != "" {
 		fmt.Printf("OpenAI:     loaded\n")
 	}
@@ -115,6 +120,8 @@ func printHelp() {
 	fmt.Println("  /temp <question>     — compare temperature 0 / 0.7 / 1.0 side-by-side")
 	fmt.Println("  /models <question>   — compare weak/medium/strong models side-by-side")
 	fmt.Println("  /agent <task>        — run agent with tools (shell, file read)")
+	fmt.Println("  /save [name]         — save session (default: current session)")
+	fmt.Println("  /load <name>         — load a named session")
 	fmt.Println("  exit / quit          — quit")
 	fmt.Println()
 	fmt.Println("Flags (set at startup):")
@@ -127,6 +134,7 @@ func printHelp() {
 	fmt.Println("  --tempcompare str   run 3-way temperature comparison and exit")
 	fmt.Println("  --models string     run 3-way model comparison and exit")
 	fmt.Println("  --agent string      run agent with tools and exit")
+	fmt.Println("  --session string    session name for chat history")
 	fmt.Println("  --verbose           print each request as curl before sending")
 	fmt.Println()
 }

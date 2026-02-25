@@ -12,8 +12,10 @@ See `TASKS.md` for all daily assignments and their status.
 - `env.go` — .env file loader (~20 lines)
 - `compare.go` — split-screen TUI, panel rendering, comparison orchestrator (~1000 lines)
 - `agent.go` — agentic loop with tool_use (run_shell, read_file) (~240 lines)
+- `history.go` — session persistence (save/load/delete JSON) (~60 lines)
 - `TASKS.md` — daily task log (assignments, status, notes)
 - `.env` — stores `ANTHROPIC_API_KEY` (not committed)
+- `.chat_history/` — saved chat sessions (not committed)
 
 ## How to run
 
@@ -33,6 +35,7 @@ go run . [flags]
 | `--temperature float` | API default | Sampling temperature (0.0–1.0) |
 | `--format string` | — | Format instruction appended to system prompt |
 | `--agent string` | — | Run agent with tools (shell, file read) and exit |
+| `--session string` | — | Session name for chat history persistence |
 
 Example:
 ```
@@ -48,15 +51,17 @@ go run . --max-tokens 200 --format "bullet points" --stop "END"
 | `/system <text>` | Update system prompt mid-session |
 | `/temp <question>` | Compare temperature 0 / 0.7 / 1.0 side-by-side |
 | `/agent <task>` | Run agent with tools (shell, file read) |
+| `/save [name]` | Save session (default: current session) |
+| `/load <name>` | Load a named session |
 | `exit` / `quit` | Quit |
 
 ## Key decisions
 
-- **File layout**: `main.go` (entry/CLI), `chat.go` (REPL), `api.go` (API client), `render.go` (markdown), `env.go` (.env), `compare.go` (TUI), `agent.go` (agent)
+- **File layout**: `main.go` (entry/CLI), `chat.go` (REPL), `api.go` (API client), `render.go` (markdown), `env.go` (.env), `compare.go` (TUI), `agent.go` (agent), `history.go` (sessions)
 - **No external deps**: uses only Go stdlib (net/http, encoding/json, etc.)
 - **`.env` loading**: hand-rolled parser, no third-party dotenv library
 - **Model**: claude-sonnet-4-5-20250929
-- **Conversation history**: full message history is sent on each request for multi-turn context
+- **Conversation history**: full message history is sent on each request for multi-turn context; auto-saved to `.chat_history/` as JSON after each exchange
 - **Streaming**: uses SSE (`stream: true`), prints tokens as they arrive via `readStream()`
 - **Format injection**: `--format` value is appended to system prompt as `"Always respond in this format: <value>"`
 

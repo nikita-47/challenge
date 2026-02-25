@@ -9,7 +9,19 @@ import (
 
 func runChat(apiKey, openaiKey string, cfg config) {
 	scanner := bufio.NewScanner(os.Stdin)
-	var history []message
+	sessionName := cfg.session
+
+	history, err := loadSession(sessionName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load session: %v\n", err)
+	}
+	if len(history) > 0 {
+		name := sessionName
+		if name == "" {
+			name = "default"
+		}
+		fmt.Printf("Resumed session '%s' (%d messages)\n\n", name, len(history))
+	}
 
 	for {
 		fmt.Print("You: ")
@@ -30,6 +42,9 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			continue
 		case input == "/clear":
 			history = nil
+			if err := deleteSession(sessionName); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to delete session file: %v\n", err)
+			}
 			fmt.Println("History cleared.")
 			fmt.Println()
 			continue
@@ -64,6 +79,37 @@ func runChat(apiKey, openaiKey string, cfg config) {
 				fmt.Println()
 			}
 			continue
+		case input == "/save" || strings.HasPrefix(input, "/save "):
+			saveName := strings.TrimPrefix(input, "/save")
+			saveName = strings.TrimSpace(saveName)
+			if saveName == "" {
+				saveName = sessionName
+			}
+			if err := saveSession(saveName, history); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: failed to save session: %v\n", err)
+			} else {
+				name := saveName
+				if name == "" {
+					name = "default"
+				}
+				fmt.Printf("Session saved as '%s'.\n", name)
+			}
+			fmt.Println()
+			continue
+		case strings.HasPrefix(input, "/load "):
+			loadName := strings.TrimSpace(strings.TrimPrefix(input, "/load "))
+			loaded, err := loadSession(loadName)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error: failed to load session: %v\n", err)
+			} else if loaded == nil {
+				fmt.Printf("Session '%s' not found.\n", loadName)
+			} else {
+				history = loaded
+				sessionName = loadName
+				fmt.Printf("Loaded session '%s' (%d messages).\n", loadName, len(history))
+			}
+			fmt.Println()
+			continue
 		}
 
 		history = append(history, message{Role: "user", Content: input})
@@ -78,5 +124,9 @@ func runChat(apiKey, openaiKey string, cfg config) {
 		fmt.Print("\n\n")
 
 		history = append(history, message{Role: "assistant", Content: reply})
+
+		if err := saveSession(sessionName, history); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to auto-save session: %v\n", err)
+		}
 	}
 }

@@ -135,6 +135,27 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 7 — Chat History Persistence ✅
+
+**Assignment:** Save chat history to JSON and restore on startup. Named sessions via `/save` and `/load`. `--session` flag for CLI. `/clear` deletes the session file.
+
+**What was built on top of Day 6:**
+- `history.go` — new file (~60 lines) with session persistence
+- `sessionFile` struct — wraps `saved_at` timestamp and `messages` array
+- `sessionPath(name)` — resolves session name to `.chat_history/<name>.json` (empty → `"default"`)
+- `saveSession()` / `loadSession()` / `deleteSession()` — JSON file operations with graceful error handling
+- Auto-save after every message exchange; auto-load on startup with "Resumed session" message
+- `/save [name]` command — save current history to named session
+- `/load <name>` command — load named session and switch auto-save target
+- `/clear` — now also deletes the session file for a clean restart
+- `--session <name>` flag — start with a specific named session
+- Banner shows session name when `--session` is used
+- `.chat_history/` added to `.gitignore`
+
+**Key code:** `saveSession()`, `loadSession()`, `deleteSession()`, `sessionPath()`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_
