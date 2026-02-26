@@ -156,6 +156,33 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 8 — Token Counting + Agent-Chat Integration ✅
+
+**Assignment:** Count tokens for each request, full history, and model response. Show cost growth. Integrate agent with chat history so `/agent` sees chat context and results go into history.
+
+**What was built on top of Day 7:**
+- `tokens.go` — new file with `tokenUsage` (per-request) and `tokenStats` (cumulative session) structs
+- `tokenStats.Add()`, `TotalTokens()`, `TotalCost()`, `FormatTotal()`, `formatTokenUsage()` — tracking and display
+- Cost model: Claude Sonnet 4.5 — $3/$15 per 1M input/output tokens
+- `message.Content` changed from `string` to `any` — supports both plain text and `[]contentBlock` (tool_use)
+- `UnmarshalJSON` on `message` — backward-compatible loading of old string-based sessions and new block-based content
+- `messageText()` helper — extracts plain text from `Content` regardless of type (string or []contentBlock)
+- `readStream()` now returns `tokenUsage` — parses `message_start` (input_tokens) and `message_delta` (output_tokens) from SSE
+- `streamChat()` returns `(string, tokenUsage, error)` — propagates token counts to caller
+- `agentMessage` type removed — agent uses unified `message` type everywhere
+- `apiResponse.Usage` — parsed from non-streaming agent API calls
+- `Agent.Stats` — cumulative `tokenStats` across all agent turns, printed per-turn and at end
+- `Agent.Run(goal, chatHistory)` — accepts chat history for context; agent sees previous conversation
+- `/agent` handler in chat: passes `history`, adds flattened task+result to history, merges agent stats
+- `/tokens` command — displays current session token statistics
+- `/clear` resets token stats
+- Banner shows cost model ($3/$15 per 1M tokens)
+- `buildOpenAIRequest()` uses `messageText()` for Content extraction (supports any type)
+
+**Key code:** `tokenUsage`, `tokenStats`, `messageText()`, `message.UnmarshalJSON()`, updated `readStream()`, `Agent.Run(goal, chatHistory)`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

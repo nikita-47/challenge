@@ -19,6 +19,8 @@ type config struct {
 	agent        string
 	session      string
 	verbose      bool
+	baseURL      string
+	model        string
 }
 
 func main() {
@@ -51,7 +53,7 @@ func main() {
 
 	if cfg.agent != "" {
 		agent := newAgent(apiKey)
-		result, err := agent.Run(cfg.agent)
+		result, err := agent.Run(cfg.agent, nil)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Agent error: %v\n", err)
 			os.Exit(1)
@@ -77,13 +79,24 @@ func parseArgs() config {
 	flag.StringVar(&cfg.agent, "agent", "", "run agent with tools and exit")
 	flag.StringVar(&cfg.session, "session", "", "session name for chat history")
 	flag.BoolVar(&cfg.verbose, "verbose", false, "print each request as curl before sending")
+	flag.StringVar(&cfg.baseURL, "base-url", "", "OpenAI-compatible base URL (e.g. http://localhost:1234)")
+	flag.StringVar(&cfg.model, "model", "", "model name for OpenAI-compatible API")
 	flag.Parse()
 	return cfg
 }
 
 func printBanner(cfg config, openaiKey string) {
 	fmt.Println("=== Claude CLI Chat ===")
-	fmt.Printf("Model:      claude-sonnet-4-5-20250929\n")
+	if cfg.baseURL != "" {
+		modelName := cfg.model
+		if modelName == "" {
+			modelName = "(default)"
+		}
+		fmt.Printf("Endpoint:   %s\n", cfg.baseURL)
+		fmt.Printf("Model:      %s\n", modelName)
+	} else {
+		fmt.Printf("Model:      claude-sonnet-4-5-20250929 ($3/$15 per 1M tokens)\n")
+	}
 	fmt.Printf("Max tokens: %d\n", cfg.maxTokens)
 	if cfg.system != "" {
 		fmt.Printf("System:     %s\n", cfg.system)
@@ -120,6 +133,7 @@ func printHelp() {
 	fmt.Println("  /temp <question>     — compare temperature 0 / 0.7 / 1.0 side-by-side")
 	fmt.Println("  /models <question>   — compare weak/medium/strong models side-by-side")
 	fmt.Println("  /agent <task>        — run agent with tools (shell, file read)")
+	fmt.Println("  /tokens              — show token usage stats for current session")
 	fmt.Println("  /save [name]         — save session (default: current session)")
 	fmt.Println("  /load <name>         — load a named session")
 	fmt.Println("  exit / quit          — quit")
@@ -136,5 +150,7 @@ func printHelp() {
 	fmt.Println("  --agent string      run agent with tools and exit")
 	fmt.Println("  --session string    session name for chat history")
 	fmt.Println("  --verbose           print each request as curl before sending")
+	fmt.Println("  --base-url string   OpenAI-compatible base URL (e.g. http://localhost:1234)")
+	fmt.Println("  --model string      model name for OpenAI-compatible API")
 	fmt.Println()
 }

@@ -13,7 +13,55 @@ import (
 
 type message struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any    `json:"content"`
+}
+
+// UnmarshalJSON handles both string and []contentBlock content for backward compatibility.
+func (m *message) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Role    string          `json:"role"`
+		Content json.RawMessage `json:"content"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	m.Role = raw.Role
+
+	// Try string first (old sessions).
+	var s string
+	if err := json.Unmarshal(raw.Content, &s); err == nil {
+		m.Content = s
+		return nil
+	}
+
+	// Otherwise treat as []contentBlock.
+	var blocks []contentBlock
+	if err := json.Unmarshal(raw.Content, &blocks); err == nil {
+		m.Content = blocks
+		return nil
+	}
+
+	// Fallback: store as-is.
+	m.Content = string(raw.Content)
+	return nil
+}
+
+// messageText extracts plain text from message.Content (string or []contentBlock).
+func messageText(m message) string {
+	switch v := m.Content.(type) {
+	case string:
+		return v
+	case []contentBlock:
+		var b strings.Builder
+		for _, block := range v {
+			if block.Type == "text" {
+				b.WriteString(block.Text)
+			}
+		}
+		return b.String()
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 type modelInfo struct {
@@ -67,7 +115,7 @@ func buildOpenAIRequest(model string, cfg config, msgs []message) map[string]any
 		openaiMsgs = append(openaiMsgs, map[string]string{"role": "system", "content": sp})
 	}
 	for _, m := range msgs {
-		openaiMsgs = append(openaiMsgs, map[string]string{"role": m.Role, "content": m.Content})
+		openaiMsgs = append(openaiMsgs, map[string]string{"role": m.Role, "content": messageText(m)})
 	}
 
 	req := map[string]any{
@@ -111,7 +159,7 @@ func printCurl(apiKey string, body []byte) {
 	fmt.Fprintf(os.Stderr, "\033[2m────────────────────────────────────────────────────────────\033[0m\n\n")
 }
 
-func streamChat(apiKey string, cfg config, msgs []message) (string, error) {
+func streamChat(apiKey string, cfg config, msgs []message) (string, tokenUsage, error) {
 	body, _ := json.Marshal(buildRequest(cfg, msgs))
 
 	if cfg.verbose {
@@ -125,20 +173,44 @@ func streamChat(apiKey string, cfg config, msgs []message) (string, error) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", err
+		return "", tokenUsage{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
 		errBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("API error (%d): %s", resp.StatusCode, errBody)
+		return "", tokenUsage{}, fmt.Errorf("API error (%d): %s", resp.StatusCode, errBody)
 	}
 
 	return readStream(resp.Body)
 }
 
-func readStream(r io.Reader) (string, error) {
+func streamChatOpenAI(baseURL, model string, cfg config, msgs []message) (string, tokenUsage, error) {
+	if model == "" {
+		model = "default"
+	}
+	body, _ := json.Marshal(buildOpenAIRequest(model, cfg, msgs))
+
+	req, _ := http.NewRequest("POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", tokenUsage{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		errBody, _ := io.ReadAll(resp.Body)
+		return "", tokenUsage{}, fmt.Errorf("API error (%d): %s", resp.StatusCode, errBody)
+	}
+
+	return readStreamOpenAI(resp.Body)
+}
+
+func readStreamOpenAI(r io.Reader) (string, tokenUsage, error) {
 	var full, pending strings.Builder
+	var usage tokenUsage
 	scanner := bufio.NewScanner(r)
 
 	for scanner.Scan() {
@@ -152,17 +224,21 @@ func readStream(r io.Reader) (string, error) {
 		}
 
 		var event struct {
-			Type  string `json:"type"`
-			Delta struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"delta"`
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+			Usage *struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+			} `json:"usage"`
 		}
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
 			continue
 		}
-		if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" {
-			text := event.Delta.Text
+		if len(event.Choices) > 0 && event.Choices[0].Delta.Content != "" {
+			text := event.Choices[0].Delta.Content
 			full.WriteString(text)
 			pending.WriteString(text)
 
@@ -173,6 +249,94 @@ func readStream(r io.Reader) (string, error) {
 				pending.WriteString(buf[i+1:])
 			}
 		}
+		if event.Usage != nil {
+			usage.InputTokens = event.Usage.PromptTokens
+			usage.OutputTokens = event.Usage.CompletionTokens
+		}
+	}
+
+	if pending.Len() > 0 {
+		fmt.Print(renderMarkdown(pending.String()))
+	}
+
+	// Fallback: estimate tokens if not reported.
+	if usage.OutputTokens == 0 && full.Len() > 0 {
+		usage.OutputTokens = full.Len() / 4
+	}
+
+	if err := scanner.Err(); err != nil {
+		return full.String(), usage, err
+	}
+	return full.String(), usage, nil
+}
+
+func readStream(r io.Reader) (string, tokenUsage, error) {
+	var full, pending strings.Builder
+	var usage tokenUsage
+	scanner := bufio.NewScanner(r)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+
+		var raw json.RawMessage
+		if err := json.Unmarshal([]byte(data), &raw); err != nil {
+			continue
+		}
+
+		var event struct {
+			Type string `json:"type"`
+		}
+		json.Unmarshal(raw, &event)
+
+		switch event.Type {
+		case "message_start":
+			var ms struct {
+				Message struct {
+					Usage struct {
+						InputTokens int `json:"input_tokens"`
+					} `json:"usage"`
+				} `json:"message"`
+			}
+			json.Unmarshal(raw, &ms)
+			usage.InputTokens = ms.Message.Usage.InputTokens
+
+		case "content_block_delta":
+			var cbd struct {
+				Delta struct {
+					Type string `json:"type"`
+					Text string `json:"text"`
+				} `json:"delta"`
+			}
+			json.Unmarshal(raw, &cbd)
+			if cbd.Delta.Type == "text_delta" {
+				text := cbd.Delta.Text
+				full.WriteString(text)
+				pending.WriteString(text)
+
+				buf := pending.String()
+				if i := strings.LastIndex(buf, "\n"); i >= 0 {
+					fmt.Print(renderMarkdown(buf[:i+1]))
+					pending.Reset()
+					pending.WriteString(buf[i+1:])
+				}
+			}
+
+		case "message_delta":
+			var md struct {
+				Usage struct {
+					OutputTokens int `json:"output_tokens"`
+				} `json:"usage"`
+			}
+			json.Unmarshal(raw, &md)
+			usage.OutputTokens = md.Usage.OutputTokens
+		}
 	}
 
 	if pending.Len() > 0 {
@@ -180,7 +344,7 @@ func readStream(r io.Reader) (string, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return full.String(), err
+		return full.String(), usage, err
 	}
-	return full.String(), nil
+	return full.String(), usage, nil
 }

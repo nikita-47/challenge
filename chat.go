@@ -10,6 +10,7 @@ import (
 func runChat(apiKey, openaiKey string, cfg config) {
 	scanner := bufio.NewScanner(os.Stdin)
 	sessionName := cfg.session
+	var stats tokenStats
 
 	history, err := loadSession(sessionName)
 	if err != nil {
@@ -42,10 +43,19 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			continue
 		case input == "/clear":
 			history = nil
+			stats = tokenStats{}
 			if err := deleteSession(sessionName); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to delete session file: %v\n", err)
 			}
 			fmt.Println("History cleared.")
+			fmt.Println()
+			continue
+		case input == "/tokens":
+			if stats.Exchanges == 0 {
+				fmt.Println("No token usage yet.")
+			} else {
+				fmt.Println(stats.FormatTotal())
+			}
 			fmt.Println()
 			continue
 		case strings.HasPrefix(input, "/system "):
@@ -70,14 +80,26 @@ func runChat(apiKey, openaiKey string, cfg config) {
 		case strings.HasPrefix(input, "/agent "):
 			task := strings.TrimPrefix(input, "/agent ")
 			agent := newAgent(apiKey)
-			result, err := agent.Run(task)
+			result, err := agent.Run(task, history)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Agent error: %v\n\n", err)
 			} else {
 				fmt.Print("Claude: ")
 				fmt.Println(renderMarkdown(result))
 				fmt.Println()
+
+				// Add flattened messages to history for persistence.
+				history = append(history, message{Role: "user", Content: task})
+				history = append(history, message{Role: "assistant", Content: result})
+
+				if err := saveSession(sessionName, history); err != nil {
+					fmt.Fprintf(os.Stderr, "Warning: failed to auto-save session: %v\n", err)
+				}
 			}
+			// Merge agent stats into session stats.
+			stats.TotalInput += agent.Stats.TotalInput
+			stats.TotalOutput += agent.Stats.TotalOutput
+			stats.Exchanges += agent.Stats.Exchanges
 			continue
 		case input == "/save" || strings.HasPrefix(input, "/save "):
 			saveName := strings.TrimPrefix(input, "/save")
@@ -106,6 +128,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			} else {
 				history = loaded
 				sessionName = loadName
+				stats = tokenStats{} // reset stats for loaded session
 				fmt.Printf("Loaded session '%s' (%d messages).\n", loadName, len(history))
 			}
 			fmt.Println()
@@ -115,13 +138,22 @@ func runChat(apiKey, openaiKey string, cfg config) {
 		history = append(history, message{Role: "user", Content: input})
 
 		fmt.Print("\nClaude: ")
-		reply, err := streamChat(apiKey, cfg, history)
+		var reply string
+		var usage tokenUsage
+		if cfg.baseURL != "" {
+			reply, usage, err = streamChatOpenAI(cfg.baseURL, cfg.model, cfg, history)
+		} else {
+			reply, usage, err = streamChat(apiKey, cfg, history)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "\nError:", err)
 			history = history[:len(history)-1]
 			continue
 		}
-		fmt.Print("\n\n")
+		fmt.Print("\n")
+
+		stats.Add(usage)
+		fmt.Printf("%s  %s\n\n", formatTokenUsage(usage), stats.FormatTotal())
 
 		history = append(history, message{Role: "assistant", Content: reply})
 

@@ -13,11 +13,6 @@ import (
 
 // ─── Agent types ─────────────────────────────────────────────────────────────
 
-type agentMessage struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"`
-}
-
 type contentBlock struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text,omitempty"`
@@ -38,6 +33,10 @@ type toolDef struct {
 type apiResponse struct {
 	Content    []contentBlock `json:"content"`
 	StopReason string         `json:"stop_reason"`
+	Usage      struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage"`
 }
 
 type Agent struct {
@@ -45,7 +44,8 @@ type Agent struct {
 	model    string
 	maxTurns int
 	tools    []toolDef
-	history  []agentMessage
+	history  []message
+	Stats    tokenStats
 }
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
@@ -164,10 +164,17 @@ func (a *Agent) callAPI() (*apiResponse, error) {
 
 // ─── Agentic loop ────────────────────────────────────────────────────────────
 
-func (a *Agent) Run(goal string) (string, error) {
+func (a *Agent) Run(goal string, chatHistory []message) (string, error) {
 	fmt.Printf("\033[1m[Agent] Goal: %s\033[0m\n", goal)
 
-	a.history = []agentMessage{{Role: "user", Content: goal}}
+	// Initialize history: chat context + goal.
+	if len(chatHistory) > 0 {
+		a.history = make([]message, len(chatHistory))
+		copy(a.history, chatHistory)
+		a.history = append(a.history, message{Role: "user", Content: goal})
+	} else {
+		a.history = []message{{Role: "user", Content: goal}}
+	}
 
 	for turn := 1; turn <= a.maxTurns; turn++ {
 		fmt.Printf("\033[2m[Agent] Turn %d/%d — calling API...\033[0m\n", turn, a.maxTurns)
@@ -177,8 +184,13 @@ func (a *Agent) Run(goal string) (string, error) {
 			return "", fmt.Errorf("turn %d: %w", turn, err)
 		}
 
+		// Track tokens.
+		usage := tokenUsage{InputTokens: resp.Usage.InputTokens, OutputTokens: resp.Usage.OutputTokens}
+		a.Stats.Add(usage)
+		fmt.Printf("\033[2m[Agent] %s\033[0m\n", formatTokenUsage(usage))
+
 		// Append assistant response to history.
-		a.history = append(a.history, agentMessage{Role: "assistant", Content: resp.Content})
+		a.history = append(a.history, message{Role: "assistant", Content: resp.Content})
 
 		// If end_turn, extract text and return.
 		if resp.StopReason == "end_turn" {
@@ -188,7 +200,7 @@ func (a *Agent) Run(goal string) (string, error) {
 					text.WriteString(block.Text)
 				}
 			}
-			fmt.Printf("\033[1m[Agent] Done after %d turn(s).\033[0m\n\n", turn)
+			fmt.Printf("\033[1m[Agent] Done after %d turn(s). %s\033[0m\n\n", turn, a.Stats.FormatTotal())
 			return text.String(), nil
 		}
 
@@ -227,10 +239,11 @@ func (a *Agent) Run(goal string) (string, error) {
 
 		// Append tool results as user message.
 		if len(toolResults) > 0 {
-			a.history = append(a.history, agentMessage{Role: "user", Content: toolResults})
+			a.history = append(a.history, message{Role: "user", Content: toolResults})
 		}
 	}
 
+	fmt.Printf("\033[1m[Agent] %s\033[0m\n", a.Stats.FormatTotal())
 	return "", fmt.Errorf("agent reached max turns (%d) without completing", a.maxTurns)
 }
 

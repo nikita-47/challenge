@@ -7,7 +7,8 @@ See `TASKS.md` for all daily assignments and their status.
 
 - `main.go` — app entry, CLI flags, config, banner, help (~120 lines)
 - `chat.go` — interactive chat REPL loop (~80 lines)
-- `api.go` — API client, request building, SSE streaming (~160 lines)
+- `api.go` — API client, request building, SSE streaming, OpenAI-compatible client (~330 lines)
+- `tokens.go` — token usage tracking and cost calculation (~40 lines)
 - `render.go` — ANSI markdown rendering (~25 lines)
 - `env.go` — .env file loader (~20 lines)
 - `compare.go` — split-screen TUI, panel rendering, comparison orchestrator (~1000 lines)
@@ -36,6 +37,8 @@ go run . [flags]
 | `--format string` | — | Format instruction appended to system prompt |
 | `--agent string` | — | Run agent with tools (shell, file read) and exit |
 | `--session string` | — | Session name for chat history persistence |
+| `--base-url string` | — | OpenAI-compatible base URL (e.g. `http://localhost:1234`) |
+| `--model string` | — | Model name for OpenAI-compatible API |
 
 Example:
 ```
@@ -50,7 +53,8 @@ go run . --max-tokens 200 --format "bullet points" --stop "END"
 | `/clear` | Reset conversation history |
 | `/system <text>` | Update system prompt mid-session |
 | `/temp <question>` | Compare temperature 0 / 0.7 / 1.0 side-by-side |
-| `/agent <task>` | Run agent with tools (shell, file read) |
+| `/agent <task>` | Run agent with tools (shell, file read, sees chat context) |
+| `/tokens` | Show token usage stats for current session |
 | `/save [name]` | Save session (default: current session) |
 | `/load <name>` | Load a named session |
 | `exit` / `quit` | Quit |
