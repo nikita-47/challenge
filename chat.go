@@ -12,16 +12,25 @@ func runChat(apiKey, openaiKey string, cfg config) {
 	sessionName := cfg.session
 	var stats tokenStats
 
-	history, err := loadSession(sessionName)
+	cw := &contextWindow{}
+	loaded, err := loadSessionCW(sessionName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load session: %v\n", err)
 	}
-	if len(history) > 0 {
+	if loaded != nil {
+		cw = loaded
+	}
+	if len(cw.Messages) > 0 {
 		name := sessionName
 		if name == "" {
 			name = "default"
 		}
-		fmt.Printf("Resumed session '%s' (%d messages)\n\n", name, len(history))
+		fmt.Printf("Resumed session '%s' (%d messages", name, len(cw.Messages))
+		if cw.Summary != "" {
+			fmt.Printf(", has summary")
+		}
+		fmt.Println(")")
+		fmt.Println()
 	}
 
 	for {
@@ -42,7 +51,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			printHelp()
 			continue
 		case input == "/clear":
-			history = nil
+			cw = &contextWindow{}
 			stats = tokenStats{}
 			if err := deleteSession(sessionName); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to delete session file: %v\n", err)
@@ -55,6 +64,14 @@ func runChat(apiKey, openaiKey string, cfg config) {
 				fmt.Println("No token usage yet.")
 			} else {
 				fmt.Println(stats.FormatTotal())
+			}
+			fmt.Println()
+			continue
+		case input == "/compress":
+			if cw.Summary == "" {
+				fmt.Printf("No summary yet (compression triggers at %d messages).\n", compressThreshold)
+			} else {
+				fmt.Printf("Current messages: %d | Summary:\n\n%s\n", len(cw.Messages), cw.Summary)
 			}
 			fmt.Println()
 			continue
@@ -80,7 +97,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 		case strings.HasPrefix(input, "/agent "):
 			task := strings.TrimPrefix(input, "/agent ")
 			agent := newAgent(apiKey)
-			result, err := agent.Run(task, history)
+			result, err := agent.Run(task, cw.Messages)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Agent error: %v\n\n", err)
 			} else {
@@ -89,10 +106,10 @@ func runChat(apiKey, openaiKey string, cfg config) {
 				fmt.Println()
 
 				// Add flattened messages to history for persistence.
-				history = append(history, message{Role: "user", Content: task})
-				history = append(history, message{Role: "assistant", Content: result})
+				cw.Messages = append(cw.Messages, message{Role: "user", Content: task})
+				cw.Messages = append(cw.Messages, message{Role: "assistant", Content: result})
 
-				if err := saveSession(sessionName, history); err != nil {
+				if err := saveSessionCW(sessionName, cw); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to auto-save session: %v\n", err)
 				}
 			}
@@ -107,7 +124,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			if saveName == "" {
 				saveName = sessionName
 			}
-			if err := saveSession(saveName, history); err != nil {
+			if err := saveSessionCW(saveName, cw); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: failed to save session: %v\n", err)
 			} else {
 				name := saveName
@@ -120,34 +137,45 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			continue
 		case strings.HasPrefix(input, "/load "):
 			loadName := strings.TrimSpace(strings.TrimPrefix(input, "/load "))
-			loaded, err := loadSession(loadName)
+			loaded, err := loadSessionCW(loadName)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: failed to load session: %v\n", err)
 			} else if loaded == nil {
 				fmt.Printf("Session '%s' not found.\n", loadName)
 			} else {
-				history = loaded
+				cw = loaded
 				sessionName = loadName
 				stats = tokenStats{} // reset stats for loaded session
-				fmt.Printf("Loaded session '%s' (%d messages).\n", loadName, len(history))
+				fmt.Printf("Loaded session '%s' (%d messages", loadName, len(cw.Messages))
+				if cw.Summary != "" {
+					fmt.Printf(", has summary")
+				}
+				fmt.Println(").")
 			}
 			fmt.Println()
 			continue
 		}
 
-		history = append(history, message{Role: "user", Content: input})
+		// Compress history BEFORE adding the new message so the current
+		// question doesn't get swallowed into the summary.
+		if err := maybeCompress(apiKey, cw, &stats); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: compression failed, continuing with full history: %v\n", err)
+		}
+
+		cw.Messages = append(cw.Messages, message{Role: "user", Content: input})
+		compressed := buildCompressedMessages(cw)
 
 		fmt.Print("\nClaude: ")
 		var reply string
 		var usage tokenUsage
 		if cfg.baseURL != "" {
-			reply, usage, err = streamChatOpenAI(cfg.baseURL, cfg.model, cfg, history)
+			reply, usage, err = streamChatOpenAI(cfg.baseURL, cfg.model, cfg, compressed)
 		} else {
-			reply, usage, err = streamChat(apiKey, cfg, history)
+			reply, usage, err = streamChat(apiKey, cfg, compressed)
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "\nError:", err)
-			history = history[:len(history)-1]
+			cw.Messages = cw.Messages[:len(cw.Messages)-1]
 			continue
 		}
 		fmt.Print("\n")
@@ -155,9 +183,9 @@ func runChat(apiKey, openaiKey string, cfg config) {
 		stats.Add(usage)
 		fmt.Printf("%s  %s\n\n", formatTokenUsage(usage), stats.FormatTotal())
 
-		history = append(history, message{Role: "assistant", Content: reply})
+		cw.Messages = append(cw.Messages, message{Role: "assistant", Content: reply})
 
-		if err := saveSession(sessionName, history); err != nil {
+		if err := saveSessionCW(sessionName, cw); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to auto-save session: %v\n", err)
 		}
 	}

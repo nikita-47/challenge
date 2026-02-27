@@ -14,6 +14,7 @@ See `TASKS.md` for all daily assignments and their status.
 - `compare.go` — split-screen TUI, panel rendering, comparison orchestrator (~1000 lines)
 - `agent.go` — agentic loop with tool_use (run_shell, read_file) (~240 lines)
 - `history.go` — session persistence (save/load/delete JSON) (~60 lines)
+- `compress.go` — context compression: summarize old messages, keep recent N as-is (~140 lines)
 - `TASKS.md` — daily task log (assignments, status, notes)
 - `.env` — stores `ANTHROPIC_API_KEY` (not committed)
 - `.chat_history/` — saved chat sessions (not committed)
@@ -55,17 +56,18 @@ go run . --max-tokens 200 --format "bullet points" --stop "END"
 | `/temp <question>` | Compare temperature 0 / 0.7 / 1.0 side-by-side |
 | `/agent <task>` | Run agent with tools (shell, file read, sees chat context) |
 | `/tokens` | Show token usage stats for current session |
+| `/compress` | Show context compression status and summaries |
 | `/save [name]` | Save session (default: current session) |
 | `/load <name>` | Load a named session |
 | `exit` / `quit` | Quit |
 
 ## Key decisions
 
-- **File layout**: `main.go` (entry/CLI), `chat.go` (REPL), `api.go` (API client), `render.go` (markdown), `env.go` (.env), `compare.go` (TUI), `agent.go` (agent), `history.go` (sessions)
+- **File layout**: `main.go` (entry/CLI), `chat.go` (REPL), `api.go` (API client), `render.go` (markdown), `env.go` (.env), `compare.go` (TUI), `agent.go` (agent), `history.go` (sessions), `compress.go` (context compression)
 - **No external deps**: uses only Go stdlib (net/http, encoding/json, etc.)
 - **`.env` loading**: hand-rolled parser, no third-party dotenv library
 - **Model**: claude-sonnet-4-5-20250929
-- **Conversation history**: full message history is sent on each request for multi-turn context; auto-saved to `.chat_history/` as JSON after each exchange
+- **Conversation history**: last 10 messages sent as-is, older messages compressed via summary before new user message is appended; auto-saved to `.chat_history/` as JSON with summaries
 - **Streaming**: uses SSE (`stream: true`), prints tokens as they arrive via `readStream()`
 - **Format injection**: `--format` value is appended to system prompt as `"Always respond in this format: <value>"`
 

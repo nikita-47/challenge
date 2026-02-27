@@ -183,6 +183,33 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 9 — Context Compression ✅
+
+**Assignment:** Implement context management: keep last N messages as-is, replace older ones with summary (every 10 messages), store summaries separately and inject instead of full history. Compare token usage before/after.
+
+**What was built on top of Day 8:**
+- `compress.go` — new file (~130 lines) with rolling context compression
+- `contextWindow` struct — tracks `Summary` (single string) and `Messages` (current unsummarized, ≤10)
+- Rolling compression algorithm:
+  1. Accumulate messages until 10
+  2. Compress (previous summary + 10 messages) → one new summary via API call
+  3. Clear messages, start accumulating again
+  4. Repeat — always one summary, max 10 unsummarized messages
+- `maybeCompress(apiKey, cw, stats)` — triggers compression at threshold, mutates cw
+  - `buildCompressedMessages(cw)` — returns API-ready message slice (summary + ack + messages)
+- `summarize(apiKey, prevSummary, msgs)` — non-streaming API call; merges previous summary with new messages
+- `sessionFile` extended with `Summary` field (backward-compatible via `omitempty`)
+- `saveSessionCW()` / `loadSessionCW()` — persist/load `contextWindow` state
+- `tokenStats.TokensSaved` — tracks estimated input tokens saved by compression
+- `/compress` command — shows current summary text
+- Compression output: `[compressed N messages → summary (M chars) | saved ~K tokens]`
+
+**Bugfix:** `compressHistory()` split into `maybeCompress()` + `buildCompressedMessages()`. Compression now runs BEFORE appending the new user message, so the current question is never swallowed into the summary.
+
+**Key code:** `contextWindow`, `maybeCompress()`, `buildCompressedMessages()`, `summarize()`, `saveSessionCW()`, `loadSessionCW()`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

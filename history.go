@@ -13,6 +13,7 @@ const historyDir = ".chat_history"
 type sessionFile struct {
 	SavedAt  time.Time `json:"saved_at"`
 	Messages []message `json:"messages"`
+	Summary  string    `json:"summary,omitempty"`
 }
 
 func sessionPath(name string) string {
@@ -22,13 +23,14 @@ func sessionPath(name string) string {
 	return filepath.Join(historyDir, name+".json")
 }
 
-func saveSession(name string, history []message) error {
+func saveSessionCW(name string, cw *contextWindow) error {
 	if err := os.MkdirAll(historyDir, 0755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(sessionFile{
 		SavedAt:  time.Now().UTC(),
-		Messages: history,
+		Messages: cw.Messages,
+		Summary:  cw.Summary,
 	}, "", "  ")
 	if err != nil {
 		return err
@@ -36,7 +38,7 @@ func saveSession(name string, history []message) error {
 	return os.WriteFile(sessionPath(name), data, 0644)
 }
 
-func loadSession(name string) ([]message, error) {
+func loadSessionCW(name string) (*contextWindow, error) {
 	data, err := os.ReadFile(sessionPath(name))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -48,7 +50,10 @@ func loadSession(name string) ([]message, error) {
 	if err := json.Unmarshal(data, &sf); err != nil {
 		return nil, err
 	}
-	return sf.Messages, nil
+	return &contextWindow{
+		Messages: sf.Messages,
+		Summary:  sf.Summary,
+	}, nil
 }
 
 func deleteSession(name string) error {

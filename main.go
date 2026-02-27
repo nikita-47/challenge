@@ -134,6 +134,7 @@ func printHelp() {
 	fmt.Println("  /models <question>   — compare weak/medium/strong models side-by-side")
 	fmt.Println("  /agent <task>        — run agent with tools (shell, file read)")
 	fmt.Println("  /tokens              — show token usage stats for current session")
+	fmt.Println("  /compress            — show context compression status and summaries")
 	fmt.Println("  /save [name]         — save session (default: current session)")
 	fmt.Println("  /load <name>         — load a named session")
 	fmt.Println("  exit / quit          — quit")

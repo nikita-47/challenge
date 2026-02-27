@@ -1,0 +1,136 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+)
+
+const compressThreshold = 10 // compress when this many messages accumulate
+
+// contextWindow tracks current messages and a single rolling summary.
+type contextWindow struct {
+	Summary  string    // accumulated summary of all previous messages (empty = none)
+	Messages []message // current unsummarized messages (≤ compressThreshold)
+}
+
+// maybeCompress checks if compression is needed and performs it, mutating cw.
+// Call BEFORE appending the new user message so the current question isn't swallowed.
+func maybeCompress(apiKey string, cw *contextWindow, stats *tokenStats) error {
+	if len(cw.Messages) < compressThreshold {
+		return nil
+	}
+
+	summary, usage, err := summarize(apiKey, cw.Summary, cw.Messages)
+	if err != nil {
+		return fmt.Errorf("summarize: %w", err)
+	}
+
+	// Estimate savings: old text vs new summary.
+	var oldLen int
+	for _, m := range cw.Messages {
+		oldLen += len(messageText(m))
+	}
+	if cw.Summary != "" {
+		oldLen += len(cw.Summary)
+	}
+	saved := (oldLen - len(summary)) / 4
+	if saved > 0 {
+		stats.TokensSaved += saved
+	}
+
+	stats.Add(usage)
+	fmt.Printf("\033[2m[compressed %d messages → summary (%d chars) | saved ~%d tokens]\033[0m\n",
+		len(cw.Messages), len(summary), saved)
+
+	cw.Summary = summary
+	cw.Messages = nil // reset — start accumulating again
+	return nil
+}
+
+// buildCompressedMessages returns the message slice to send to the API,
+// prepending summary+ack if a summary exists.
+func buildCompressedMessages(cw *contextWindow) []message {
+	if cw.Summary != "" {
+		summaryMsg := message{
+			Role:    "user",
+			Content: "Previous conversation summary:\n" + cw.Summary,
+		}
+		ackMsg := message{
+			Role:    "assistant",
+			Content: "Understood, I have the context from our previous conversation.",
+		}
+		result := make([]message, 0, 2+len(cw.Messages))
+		result = append(result, summaryMsg, ackMsg)
+		result = append(result, cw.Messages...)
+		return result
+	}
+
+	return cw.Messages
+}
+
+// summarize calls Claude API (non-streaming) to produce a concise summary
+// from the previous summary (if any) and the current messages.
+func summarize(apiKey string, prevSummary string, msgs []message) (string, tokenUsage, error) {
+	var conv strings.Builder
+
+	if prevSummary != "" {
+		conv.WriteString("Previous summary:\n")
+		conv.WriteString(prevSummary)
+		conv.WriteString("\n\nNew conversation:\n")
+	}
+
+	for _, m := range msgs {
+		conv.WriteString(m.Role)
+		conv.WriteString(": ")
+		conv.WriteString(messageText(m))
+		conv.WriteString("\n\n")
+	}
+
+	body, _ := json.Marshal(map[string]any{
+		"model":      "claude-sonnet-4-5-20250929",
+		"max_tokens": 512,
+		"system":     "Summarize the following conversation concisely, preserving key facts, decisions, and context needed for continuation. If a previous summary is provided, merge it with the new conversation into one unified summary. Be brief.",
+		"messages": []map[string]string{
+			{"role": "user", "content": conv.String()},
+		},
+	})
+
+	req, _ := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
+	req.Header.Set("x-api-key", apiKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("content-type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", tokenUsage{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		errBody, _ := io.ReadAll(resp.Body)
+		return "", tokenUsage{}, fmt.Errorf("API error (%d): %s", resp.StatusCode, errBody)
+	}
+
+	var result apiResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", tokenUsage{}, fmt.Errorf("decode error: %w", err)
+	}
+
+	var text strings.Builder
+	for _, block := range result.Content {
+		if block.Type == "text" {
+			text.WriteString(block.Text)
+		}
+	}
+
+	usage := tokenUsage{
+		InputTokens:  result.Usage.InputTokens,
+		OutputTokens: result.Usage.OutputTokens,
+	}
+
+	return text.String(), usage, nil
+}

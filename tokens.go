@@ -11,6 +11,7 @@ type tokenStats struct {
 	TotalInput  int
 	TotalOutput int
 	Exchanges   int
+	TokensSaved int // estimated input tokens saved by compression
 }
 
 func (s *tokenStats) Add(u tokenUsage) {
@@ -33,6 +34,10 @@ func formatTokenUsage(u tokenUsage) string {
 }
 
 func (s *tokenStats) FormatTotal() string {
-	return fmt.Sprintf("\033[2m[session: %d in / %d out | %d exchanges | $%.6f]\033[0m",
+	base := fmt.Sprintf("\033[2m[session: %d in / %d out | %d exchanges | $%.6f",
 		s.TotalInput, s.TotalOutput, s.Exchanges, s.TotalCost())
+	if s.TokensSaved > 0 {
+		base += fmt.Sprintf(" | saved ~%d tokens", s.TokensSaved)
+	}
+	return base + "]\033[0m"
 }
