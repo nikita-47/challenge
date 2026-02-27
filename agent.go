@@ -11,6 +11,21 @@ import (
 	"strings"
 )
 
+// ─── Agent event (for decoupled IO) ──────────────────────────────────────────
+
+type AgentEvent struct {
+	Type    string          `json:"type"`              // "turn", "thinking", "tool_call", "tool_result", "text", "done", "error", "usage"
+	Turn    int             `json:"turn,omitempty"`
+	MaxTurn int             `json:"max_turn,omitempty"`
+	Tool    string          `json:"tool,omitempty"`
+	Input   json.RawMessage `json:"input,omitempty"`
+	Output  string          `json:"output,omitempty"`
+	IsError bool            `json:"is_error,omitempty"`
+	Text    string          `json:"text,omitempty"`
+	Usage   *tokenUsage     `json:"usage,omitempty"`
+	Stats   *tokenStats     `json:"stats,omitempty"`
+}
+
 // ─── Agent types ─────────────────────────────────────────────────────────────
 
 type contentBlock struct {
@@ -164,8 +179,12 @@ func (a *Agent) callAPI() (*apiResponse, error) {
 
 // ─── Agentic loop ────────────────────────────────────────────────────────────
 
-func (a *Agent) Run(goal string, chatHistory []message) (string, error) {
-	fmt.Printf("\033[1m[Agent] Goal: %s\033[0m\n", goal)
+func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (string, error) {
+	if emit == nil {
+		emit = func(AgentEvent) {}
+	}
+
+	emit(AgentEvent{Type: "text", Text: goal})
 
 	// Initialize history: chat context + goal.
 	if len(chatHistory) > 0 {
@@ -177,17 +196,18 @@ func (a *Agent) Run(goal string, chatHistory []message) (string, error) {
 	}
 
 	for turn := 1; turn <= a.maxTurns; turn++ {
-		fmt.Printf("\033[2m[Agent] Turn %d/%d — calling API...\033[0m\n", turn, a.maxTurns)
+		emit(AgentEvent{Type: "turn", Turn: turn, MaxTurn: a.maxTurns})
 
 		resp, err := a.callAPI()
 		if err != nil {
+			emit(AgentEvent{Type: "error", Text: fmt.Sprintf("turn %d: %v", turn, err)})
 			return "", fmt.Errorf("turn %d: %w", turn, err)
 		}
 
 		// Track tokens.
 		usage := tokenUsage{InputTokens: resp.Usage.InputTokens, OutputTokens: resp.Usage.OutputTokens}
 		a.Stats.Add(usage)
-		fmt.Printf("\033[2m[Agent] %s\033[0m\n", formatTokenUsage(usage))
+		emit(AgentEvent{Type: "usage", Usage: &usage})
 
 		// Append assistant response to history.
 		a.history = append(a.history, message{Role: "assistant", Content: resp.Content})
@@ -200,7 +220,8 @@ func (a *Agent) Run(goal string, chatHistory []message) (string, error) {
 					text.WriteString(block.Text)
 				}
 			}
-			fmt.Printf("\033[1m[Agent] Done after %d turn(s). %s\033[0m\n\n", turn, a.Stats.FormatTotal())
+			statsCopy := a.Stats
+			emit(AgentEvent{Type: "done", Turn: turn, Stats: &statsCopy})
 			return text.String(), nil
 		}
 
@@ -208,26 +229,16 @@ func (a *Agent) Run(goal string, chatHistory []message) (string, error) {
 		var toolResults []contentBlock
 		for _, block := range resp.Content {
 			if block.Type == "text" && block.Text != "" {
-				fmt.Printf("\033[2m[Agent] Thinking: %s\033[0m\n", truncate(block.Text, 100))
+				emit(AgentEvent{Type: "thinking", Text: block.Text})
 			}
 			if block.Type != "tool_use" {
 				continue
 			}
 
-			// Print tool call info.
-			fmt.Printf("\033[33m[Agent] Tool: %s\033[0m\n", block.Name)
-			if block.Name == "run_shell" {
-				var input struct{ Command string }
-				json.Unmarshal(block.Input, &input)
-				fmt.Printf("\033[33m[Agent]   $ %s\033[0m\n", input.Command)
-			} else if block.Name == "read_file" {
-				var input struct{ Path string }
-				json.Unmarshal(block.Input, &input)
-				fmt.Printf("\033[33m[Agent]   path: %s\033[0m\n", input.Path)
-			}
+			emit(AgentEvent{Type: "tool_call", Tool: block.Name, Input: block.Input})
 
 			result, isError := executeTool(block.Name, block.Input)
-			fmt.Printf("\033[2m[Agent]   Result: %s\033[0m\n", truncate(result, 200))
+			emit(AgentEvent{Type: "tool_result", Tool: block.Name, Output: result, IsError: isError})
 
 			toolResults = append(toolResults, contentBlock{
 				Type:      "tool_result",
@@ -243,7 +254,8 @@ func (a *Agent) Run(goal string, chatHistory []message) (string, error) {
 		}
 	}
 
-	fmt.Printf("\033[1m[Agent] %s\033[0m\n", a.Stats.FormatTotal())
+	statsCopy := a.Stats
+	emit(AgentEvent{Type: "done", Stats: &statsCopy})
 	return "", fmt.Errorf("agent reached max turns (%d) without completing", a.maxTurns)
 }
 

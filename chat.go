@@ -2,10 +2,68 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 )
+
+// cliTokenWriter buffers streaming text and renders markdown to stdout line by line.
+type cliTokenWriter struct {
+	pending strings.Builder
+}
+
+func (w *cliTokenWriter) OnToken(text string) {
+	w.pending.WriteString(text)
+	buf := w.pending.String()
+	if i := strings.LastIndex(buf, "\n"); i >= 0 {
+		fmt.Print(renderMarkdown(buf[:i+1]))
+		w.pending.Reset()
+		w.pending.WriteString(buf[i+1:])
+	}
+}
+
+func (w *cliTokenWriter) Flush() {
+	if w.pending.Len() > 0 {
+		fmt.Print(renderMarkdown(w.pending.String()))
+		w.pending.Reset()
+	}
+}
+
+// cliAgentEmit prints agent events to stdout in the same format as the old Run method.
+func cliAgentEmit(ev AgentEvent) {
+	switch ev.Type {
+	case "turn":
+		fmt.Printf("\033[2m[Agent] Turn %d/%d — calling API...\033[0m\n", ev.Turn, ev.MaxTurn)
+	case "thinking":
+		fmt.Printf("\033[2m[Agent] Thinking: %s\033[0m\n", truncate(ev.Text, 100))
+	case "tool_call":
+		fmt.Printf("\033[33m[Agent] Tool: %s\033[0m\n", ev.Tool)
+		if ev.Tool == "run_shell" {
+			var input struct{ Command string }
+			json.Unmarshal(ev.Input, &input)
+			fmt.Printf("\033[33m[Agent]   $ %s\033[0m\n", input.Command)
+		} else if ev.Tool == "read_file" {
+			var input struct{ Path string }
+			json.Unmarshal(ev.Input, &input)
+			fmt.Printf("\033[33m[Agent]   path: %s\033[0m\n", input.Path)
+		}
+	case "tool_result":
+		fmt.Printf("\033[2m[Agent]   Result: %s\033[0m\n", truncate(ev.Output, 200))
+	case "usage":
+		if ev.Usage != nil {
+			fmt.Printf("\033[2m[Agent] %s\033[0m\n", formatTokenUsage(*ev.Usage))
+		}
+	case "done":
+		if ev.Stats != nil {
+			fmt.Printf("\033[1m[Agent] Done after %d turn(s). %s\033[0m\n\n", ev.Turn, ev.Stats.FormatTotal())
+		}
+	case "error":
+		fmt.Fprintf(os.Stderr, "\033[31m[Agent] Error: %s\033[0m\n", ev.Text)
+	case "text":
+		fmt.Printf("\033[1m[Agent] Goal: %s\033[0m\n", ev.Text)
+	}
+}
 
 func runChat(apiKey, openaiKey string, cfg config) {
 	scanner := bufio.NewScanner(os.Stdin)
@@ -97,7 +155,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 		case strings.HasPrefix(input, "/agent "):
 			task := strings.TrimPrefix(input, "/agent ")
 			agent := newAgent(apiKey)
-			result, err := agent.Run(task, cw.Messages)
+			result, err := agent.Run(task, cw.Messages, cliAgentEmit)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Agent error: %v\n\n", err)
 			} else {
@@ -158,21 +216,27 @@ func runChat(apiKey, openaiKey string, cfg config) {
 
 		// Compress history BEFORE adding the new message so the current
 		// question doesn't get swallowed into the summary.
-		if err := maybeCompress(apiKey, cw, &stats); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: compression failed, continuing with full history: %v\n", err)
+		ci, compErr := maybeCompress(apiKey, cw, &stats)
+		if compErr != nil {
+			fmt.Fprintf(os.Stderr, "Warning: compression failed, continuing with full history: %v\n", compErr)
+		} else if ci != nil {
+			fmt.Printf("\033[2m[compressed %d messages → summary (%d chars) | saved ~%d tokens]\033[0m\n",
+				ci.MessageCount, ci.SummaryLen, ci.TokensSaved)
 		}
 
 		cw.Messages = append(cw.Messages, message{Role: "user", Content: input})
 		compressed := buildCompressedMessages(cw)
 
 		fmt.Print("\nClaude: ")
+		tw := &cliTokenWriter{}
 		var reply string
 		var usage tokenUsage
 		if cfg.baseURL != "" {
-			reply, usage, err = streamChatOpenAI(cfg.baseURL, cfg.model, cfg, compressed)
+			reply, usage, err = streamChatOpenAI(cfg.baseURL, cfg.model, cfg, compressed, tw.OnToken)
 		} else {
-			reply, usage, err = streamChat(apiKey, cfg, compressed)
+			reply, usage, err = streamChat(apiKey, cfg, compressed, tw.OnToken)
 		}
+		tw.Flush()
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "\nError:", err)
 			cw.Messages = cw.Messages[:len(cw.Messages)-1]

@@ -1,7 +1,23 @@
 {
   "permissions": {
     "allow": [
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(go vet . 2>&1 && echo \"exit\" | go run . 2>&1)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(go version:*)",
+      "Bash(npx vue-tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(go vet:*)",
+      "WebFetch(domain:v3.shadcn-vue.com)",
+      "WebSearch",
+      "WebFetch(domain:www.shadcn-vue.com)",
+      "Bash(cd frontend && npm install radix-vue class-variance-authority clsx tailwind-merge lucide-vue-next 2>&1)",
+      "Bash(cd frontend && npx vite build 2>&1)",
+      "Bash(cd /Users/nbonachev/dev/challenge/frontend && npx vite build 2>&1)"
     ]
   }
 }

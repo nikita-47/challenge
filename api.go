@@ -159,7 +159,7 @@ func printCurl(apiKey string, body []byte) {
 	fmt.Fprintf(os.Stderr, "\033[2m────────────────────────────────────────────────────────────\033[0m\n\n")
 }
 
-func streamChat(apiKey string, cfg config, msgs []message) (string, tokenUsage, error) {
+func streamChat(apiKey string, cfg config, msgs []message, onToken func(string)) (string, tokenUsage, error) {
 	body, _ := json.Marshal(buildRequest(cfg, msgs))
 
 	if cfg.verbose {
@@ -182,10 +182,10 @@ func streamChat(apiKey string, cfg config, msgs []message) (string, tokenUsage, 
 		return "", tokenUsage{}, fmt.Errorf("API error (%d): %s", resp.StatusCode, errBody)
 	}
 
-	return readStream(resp.Body)
+	return readStream(resp.Body, onToken)
 }
 
-func streamChatOpenAI(baseURL, model string, cfg config, msgs []message) (string, tokenUsage, error) {
+func streamChatOpenAI(baseURL, model string, cfg config, msgs []message, onToken func(string)) (string, tokenUsage, error) {
 	if model == "" {
 		model = "default"
 	}
@@ -205,11 +205,11 @@ func streamChatOpenAI(baseURL, model string, cfg config, msgs []message) (string
 		return "", tokenUsage{}, fmt.Errorf("API error (%d): %s", resp.StatusCode, errBody)
 	}
 
-	return readStreamOpenAI(resp.Body)
+	return readStreamOpenAI(resp.Body, onToken)
 }
 
-func readStreamOpenAI(r io.Reader) (string, tokenUsage, error) {
-	var full, pending strings.Builder
+func readStreamOpenAI(r io.Reader, onToken func(string)) (string, tokenUsage, error) {
+	var full strings.Builder
 	var usage tokenUsage
 	scanner := bufio.NewScanner(r)
 
@@ -240,23 +240,14 @@ func readStreamOpenAI(r io.Reader) (string, tokenUsage, error) {
 		if len(event.Choices) > 0 && event.Choices[0].Delta.Content != "" {
 			text := event.Choices[0].Delta.Content
 			full.WriteString(text)
-			pending.WriteString(text)
-
-			buf := pending.String()
-			if i := strings.LastIndex(buf, "\n"); i >= 0 {
-				fmt.Print(renderMarkdown(buf[:i+1]))
-				pending.Reset()
-				pending.WriteString(buf[i+1:])
+			if onToken != nil {
+				onToken(text)
 			}
 		}
 		if event.Usage != nil {
 			usage.InputTokens = event.Usage.PromptTokens
 			usage.OutputTokens = event.Usage.CompletionTokens
 		}
-	}
-
-	if pending.Len() > 0 {
-		fmt.Print(renderMarkdown(pending.String()))
 	}
 
 	// Fallback: estimate tokens if not reported.
@@ -270,8 +261,8 @@ func readStreamOpenAI(r io.Reader) (string, tokenUsage, error) {
 	return full.String(), usage, nil
 }
 
-func readStream(r io.Reader) (string, tokenUsage, error) {
-	var full, pending strings.Builder
+func readStream(r io.Reader, onToken func(string)) (string, tokenUsage, error) {
+	var full strings.Builder
 	var usage tokenUsage
 	scanner := bufio.NewScanner(r)
 
@@ -318,13 +309,8 @@ func readStream(r io.Reader) (string, tokenUsage, error) {
 			if cbd.Delta.Type == "text_delta" {
 				text := cbd.Delta.Text
 				full.WriteString(text)
-				pending.WriteString(text)
-
-				buf := pending.String()
-				if i := strings.LastIndex(buf, "\n"); i >= 0 {
-					fmt.Print(renderMarkdown(buf[:i+1]))
-					pending.Reset()
-					pending.WriteString(buf[i+1:])
+				if onToken != nil {
+					onToken(text)
 				}
 			}
 
@@ -337,10 +323,6 @@ func readStream(r io.Reader) (string, tokenUsage, error) {
 			json.Unmarshal(raw, &md)
 			usage.OutputTokens = md.Usage.OutputTokens
 		}
-	}
-
-	if pending.Len() > 0 {
-		fmt.Print(renderMarkdown(pending.String()))
 	}
 
 	if err := scanner.Err(); err != nil {

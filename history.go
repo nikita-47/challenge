@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -62,4 +63,26 @@ func deleteSession(name string) error {
 		return nil
 	}
 	return err
+}
+
+// listSessions returns names of all saved sessions.
+func listSessions() ([]string, error) {
+	entries, err := os.ReadDir(historyDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var names []string
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		if strings.HasSuffix(name, ".json") {
+			names = append(names, strings.TrimSuffix(name, ".json"))
+		}
+	}
+	return names, nil
 }

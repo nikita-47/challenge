@@ -17,16 +17,24 @@ type contextWindow struct {
 	Messages []message // current unsummarized messages (≤ compressThreshold)
 }
 
+// compressInfo holds details about a compression event.
+type compressInfo struct {
+	MessageCount int
+	SummaryLen   int
+	TokensSaved  int
+}
+
 // maybeCompress checks if compression is needed and performs it, mutating cw.
 // Call BEFORE appending the new user message so the current question isn't swallowed.
-func maybeCompress(apiKey string, cw *contextWindow, stats *tokenStats) error {
+// Returns non-nil compressInfo if compression was performed.
+func maybeCompress(apiKey string, cw *contextWindow, stats *tokenStats) (*compressInfo, error) {
 	if len(cw.Messages) < compressThreshold {
-		return nil
+		return nil, nil
 	}
 
 	summary, usage, err := summarize(apiKey, cw.Summary, cw.Messages)
 	if err != nil {
-		return fmt.Errorf("summarize: %w", err)
+		return nil, fmt.Errorf("summarize: %w", err)
 	}
 
 	// Estimate savings: old text vs new summary.
@@ -42,13 +50,16 @@ func maybeCompress(apiKey string, cw *contextWindow, stats *tokenStats) error {
 		stats.TokensSaved += saved
 	}
 
+	msgCount := len(cw.Messages)
 	stats.Add(usage)
-	fmt.Printf("\033[2m[compressed %d messages → summary (%d chars) | saved ~%d tokens]\033[0m\n",
-		len(cw.Messages), len(summary), saved)
 
 	cw.Summary = summary
 	cw.Messages = nil // reset — start accumulating again
-	return nil
+	return &compressInfo{
+		MessageCount: msgCount,
+		SummaryLen:   len(summary),
+		TokensSaved:  saved,
+	}, nil
 }
 
 // buildCompressedMessages returns the message slice to send to the API,

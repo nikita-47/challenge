@@ -21,6 +21,8 @@ type config struct {
 	verbose      bool
 	baseURL      string
 	model        string
+	server       bool
+	port         int
 }
 
 func main() {
@@ -53,12 +55,17 @@ func main() {
 
 	if cfg.agent != "" {
 		agent := newAgent(apiKey)
-		result, err := agent.Run(cfg.agent, nil)
+		result, err := agent.Run(cfg.agent, nil, cliAgentEmit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Agent error: %v\n", err)
 			os.Exit(1)
 		}
 		fmt.Println(renderMarkdown(result))
+		return
+	}
+
+	if cfg.server {
+		startServer(apiKey, cfg.port)
 		return
 	}
 
@@ -81,6 +88,8 @@ func parseArgs() config {
 	flag.BoolVar(&cfg.verbose, "verbose", false, "print each request as curl before sending")
 	flag.StringVar(&cfg.baseURL, "base-url", "", "OpenAI-compatible base URL (e.g. http://localhost:1234)")
 	flag.StringVar(&cfg.model, "model", "", "model name for OpenAI-compatible API")
+	flag.BoolVar(&cfg.server, "server", false, "start HTTP server with Vue UI")
+	flag.IntVar(&cfg.port, "port", 8080, "HTTP server port")
 	flag.Parse()
 	return cfg
 }

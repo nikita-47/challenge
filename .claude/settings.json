@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir*)",
+      "Bash(go build*)",
+      "Bash(go vet*)",
+      "Bash(npx vue-tsc*)",
+      "Bash(npm run build*)"
+    ]
+  }
+}
