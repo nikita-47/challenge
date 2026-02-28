@@ -19,14 +19,6 @@ func startServer(apiKey string, cfg config) {
 		handleChat(w, r, apiKey)
 	})
 
-	mux.HandleFunc("/api/agent", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		handleAgent(w, r, apiKey)
-	})
-
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -129,84 +121,10 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 		return
 	}
 
-	if req.MaxTokens <= 0 {
-		req.MaxTokens = 1024
-	}
-	if req.Temperature == 0 {
-		req.Temperature = -1 // API default
-	}
-
 	cfg := config{
 		maxTokens:   req.MaxTokens,
 		temperature: req.Temperature,
 		system:      req.System,
-	}
-
-	// Load session.
-	cw := &contextWindow{}
-	if loaded, err := loadSessionCW(req.Session); err == nil && loaded != nil {
-		cw = loaded
-	}
-
-	var stats tokenStats
-
-	// Compress if needed.
-	ci, compErr := maybeCompress(apiKey, cw, &stats)
-	if compErr != nil {
-		// Non-fatal, continue.
-		_ = compErr
-	}
-
-	cw.Messages = append(cw.Messages, message{Role: "user", Content: req.Message})
-	compressed := buildCompressedMessages(cw)
-
-	sseSetup(w)
-
-	if ci != nil {
-		sseWrite(w, map[string]any{
-			"type":         "compress",
-			"messageCount": ci.MessageCount,
-			"summaryLen":   ci.SummaryLen,
-			"tokensSaved":  ci.TokensSaved,
-		})
-	}
-
-	onToken := func(text string) {
-		sseWrite(w, map[string]any{
-			"type": "text_delta",
-			"text": text,
-		})
-	}
-
-	reply, usage, err := streamChat(apiKey, cfg, compressed, onToken)
-	if err != nil {
-		sseWrite(w, map[string]any{"type": "error", "message": err.Error()})
-		return
-	}
-
-	cw.Messages = append(cw.Messages, message{Role: "assistant", Content: reply})
-	_ = saveSessionCW(req.Session, cw)
-
-	sseWrite(w, map[string]any{
-		"type":   "usage",
-		"input":  usage.InputTokens,
-		"output": usage.OutputTokens,
-	})
-	sseWrite(w, map[string]any{"type": "done"})
-}
-
-// ─── POST /api/agent ─────────────────────────────────────────────────────────
-
-type agentRequest struct {
-	Task    string `json:"task"`
-	Session string `json:"session"`
-}
-
-func handleAgent(w http.ResponseWriter, r *http.Request, apiKey string) {
-	var req agentRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
-		return
 	}
 
 	// Load session for context.
@@ -217,19 +135,19 @@ func handleAgent(w http.ResponseWriter, r *http.Request, apiKey string) {
 
 	sseSetup(w)
 
-	agent := newAgent(apiKey)
+	agent := newAgent(apiKey, cfg)
 	emit := func(ev AgentEvent) {
 		sseWrite(w, ev)
 	}
 
-	result, err := agent.Run(req.Task, cw.Messages, emit)
+	result, err := agent.Run(req.Message, cw.Messages, emit)
 	if err != nil {
 		sseWrite(w, map[string]any{"type": "error", "message": err.Error()})
 		return
 	}
 
-	// Save flattened result to session.
-	cw.Messages = append(cw.Messages, message{Role: "user", Content: req.Task})
+	// Save to session.
+	cw.Messages = append(cw.Messages, message{Role: "user", Content: req.Message})
 	cw.Messages = append(cw.Messages, message{Role: "assistant", Content: result})
 	_ = saveSessionCW(req.Session, cw)
 }

@@ -104,7 +104,45 @@ go run . --server
 - **Conversation history**: last 10 messages sent as-is, older messages compressed via summary before new user message is appended; auto-saved to `.chat_history/` as JSON with summaries
 - **Streaming**: uses SSE (`stream: true`); CLI renders via `cliTokenWriter`, HTTP sends SSE events to browser
 - **Format injection**: `--format` value is appended to system prompt as `"Always respond in this format: <value>"`
-- **HTTP API**: POST `/api/chat` (SSE stream), POST `/api/agent` (SSE stream), GET/DELETE `/api/sessions[/:name]`
+- **HTTP API**: POST `/api/chat` (SSE stream, unified agent endpoint with tools), GET/DELETE `/api/sessions[/:name]`
+
+## Dev workflow (autonomous)
+
+Dev servers should be running throughout the session. Start once at the beginning, restart Go only after `.go` changes.
+
+### Check & start servers
+Before starting a server, check if the port is already in use:
+```bash
+lsof -i :8080 -t  # empty = not running, PID = already running
+lsof -i :5173 -t  # same for Vite (may use 5174 if 5173 busy)
+```
+
+Start only what's not running:
+```bash
+# Go backend (run in background)
+go run . --server --port 8080
+
+# Vite dev server with HMR (run in background, only once per session)
+cd frontend && npm run dev
+```
+
+### When to restart
+- **Go code changed** → kill Go server (`lsof -i :8080 -t | xargs kill`), rebuild and restart
+- **Frontend code changed** → do nothing, Vite HMR picks it up automatically
+- **Vite dev server** → never restart unless config changed (vite.config.ts, tailwind, etc.)
+
+### Build & type check
+Run before browser testing:
+```bash
+go build .                           # Go compilation
+cd frontend && npx vue-tsc --noEmit  # TypeScript check
+```
+
+### Browser verification (Playwright MCP)
+After implementing features, **always verify in browser** before reporting done:
+1. Navigate to Vite dev URL (usually `http://localhost:5173` or `:5174`)
+2. Test the feature end-to-end: interact with UI, send messages, verify responses
+3. On issues: check `browser_console_messages` and `browser_network_requests`
 
 ## Rules
 

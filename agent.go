@@ -55,22 +55,36 @@ type apiResponse struct {
 }
 
 type Agent struct {
-	apiKey   string
-	model    string
-	maxTurns int
-	tools    []toolDef
-	history  []message
-	Stats    tokenStats
+	apiKey      string
+	model       string
+	maxTurns    int
+	maxTokens   int
+	system      string
+	temperature float64
+	tools       []toolDef
+	history     []message
+	Stats       tokenStats
 }
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
 
-func newAgent(apiKey string) *Agent {
+func newAgent(apiKey string, cfg config) *Agent {
+	model := "claude-sonnet-4-5-20250929"
+	if cfg.model != "" {
+		model = cfg.model
+	}
+	maxTokens := 4096
+	if cfg.maxTokens > 0 {
+		maxTokens = cfg.maxTokens
+	}
 	return &Agent{
-		apiKey:   apiKey,
-		model:    "claude-sonnet-4-5-20250929",
-		maxTurns: 10,
-		tools:    defaultTools(),
+		apiKey:      apiKey,
+		model:       model,
+		maxTurns:    10,
+		maxTokens:   maxTokens,
+		system:      cfg.system,
+		temperature: cfg.temperature,
+		tools:       defaultTools(),
 	}
 }
 
@@ -147,12 +161,19 @@ func executeTool(name string, rawInput json.RawMessage) (string, bool) {
 // ─── API call (non-streaming) ────────────────────────────────────────────────
 
 func (a *Agent) callAPI() (*apiResponse, error) {
-	body, _ := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"model":      a.model,
-		"max_tokens": 4096,
+		"max_tokens": a.maxTokens,
 		"messages":   a.history,
 		"tools":      a.tools,
-	})
+	}
+	if a.system != "" {
+		payload["system"] = a.system
+	}
+	if a.temperature > 0 {
+		payload["temperature"] = a.temperature
+	}
+	body, _ := json.Marshal(payload)
 
 	req, _ := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
 	req.Header.Set("x-api-key", a.apiKey)
@@ -212,11 +233,12 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 		// Append assistant response to history.
 		a.history = append(a.history, message{Role: "assistant", Content: resp.Content})
 
-		// If end_turn, extract text and return.
+		// If end_turn, emit text and return.
 		if resp.StopReason == "end_turn" {
 			var text strings.Builder
 			for _, block := range resp.Content {
 				if block.Type == "text" {
+					emit(AgentEvent{Type: "text_delta", Text: block.Text})
 					text.WriteString(block.Text)
 				}
 			}

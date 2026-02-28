@@ -3,8 +3,8 @@ package main
 import "fmt"
 
 type tokenUsage struct {
-	InputTokens  int
-	OutputTokens int
+	InputTokens  int `json:"input"`
+	OutputTokens int `json:"output"`
 }
 
 type tokenStats struct {

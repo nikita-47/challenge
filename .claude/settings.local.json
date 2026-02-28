@@ -1,27 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(go build:*)",
-      "Bash(ls:*)",
-      "Bash(grep:*)",
-      "Bash(go run:*)",
-      "Bash(go vet . 2>&1 && echo \"exit\" | go run . 2>&1)",
-      "Bash(git add:*)",
-      "Bash(git push:*)",
-      "Bash(git commit:*)",
-      "Bash(go version:*)",
-      "Bash(npx vue-tsc:*)",
-      "Bash(npm run:*)",
-      "Bash(go vet:*)",
-      "WebFetch(domain:v3.shadcn-vue.com)",
-      "WebSearch",
-      "WebFetch(domain:www.shadcn-vue.com)",
-      "Bash(npm install:*)",
-      "Bash(npx vite:*)",
-      "Bash(node:*)",
-      "mcp__playwright",
-      "Bash(npx shadcn-vue:*)",
-      "Bash(npm ls:*)"
-    ]
+    "allow": []
   }
 }

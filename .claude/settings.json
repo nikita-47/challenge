@@ -1,11 +1,32 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir*)",
       "Bash(go build*)",
+      "Bash(go run*)",
       "Bash(go vet*)",
+      "Bash(go test*)",
       "Bash(npx vue-tsc*)",
-      "Bash(npm run build*)"
+      "Bash(npx vite*)",
+      "Bash(npx shadcn-vue*)",
+      "Bash(npm run*)",
+      "Bash(npm install*)",
+      "Bash(npm ls*)",
+      "Bash(node*)",
+      "Bash(mkdir*)",
+      "Bash(lsof*)",
+      "Bash(kill*)",
+      "Bash(sleep*)",
+      "Bash(cat /private/tmp/*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git push*)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "WebSearch",
+      "WebFetch(domain:v3.shadcn-vue.com)",
+      "WebFetch(domain:www.shadcn-vue.com)",
+      "mcp__playwright"
     ]
   }
 }

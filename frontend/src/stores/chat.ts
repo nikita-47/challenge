@@ -6,7 +6,6 @@ import { streamRequest } from '@/composables/useSSE'
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const isStreaming = ref(false)
-  const isAgentMode = ref(false)
   const currentSession = ref('default')
   const usage = ref<TokenUsage>({ input: 0, output: 0 })
   const totalUsage = ref<TokenUsage>({ input: 0, output: 0 })
@@ -59,18 +58,16 @@ export const useChatStore = defineStore('chat', () => {
     isStreaming.value = true
     abortController = new AbortController()
 
-    const url = isAgentMode.value ? '/api/agent' : '/api/chat'
-    const body = isAgentMode.value
-      ? { task: text, session: currentSession.value }
-      : {
-          message: text,
-          session: currentSession.value,
-          ...(settings.value && {
-            system: settings.value.system,
-            maxTokens: settings.value.maxTokens,
-            temperature: settings.value.temperature,
-          }),
-        }
+    const url = '/api/chat'
+    const body = {
+      message: text,
+      session: currentSession.value,
+      ...(settings.value && {
+        system: settings.value.system,
+        maxTokens: settings.value.maxTokens,
+        temperature: settings.value.temperature,
+      }),
+    }
 
     let pendingToolCalls: ToolCall[] = []
 
@@ -95,13 +92,13 @@ export const useChatStore = defineStore('chat', () => {
             break
 
           case 'thinking':
-            msg.content += event.Text + '\n'
+            msg.content += event.text + '\n'
             break
 
           case 'tool_call': {
             const tc: ToolCall = {
-              tool: event.Tool,
-              input: event.Input as Record<string, unknown>,
+              tool: event.tool,
+              input: event.input as Record<string, unknown>,
             }
             pendingToolCalls.push(tc)
             if (!msg.toolCalls) {
@@ -113,39 +110,38 @@ export const useChatStore = defineStore('chat', () => {
 
           case 'tool_result': {
             const last = pendingToolCalls.find(
-              (tc) => tc.tool === event.Tool && tc.output === undefined,
+              (tc) => tc.tool === event.tool && tc.output === undefined,
             )
             if (last) {
-              last.output = event.Output
-              last.isError = event.IsError
+              last.output = event.output
+              last.isError = event.is_error
             }
             break
           }
 
           case 'usage':
-            if (event.input !== undefined) {
-              usage.value = { input: event.input, output: event.output }
-              totalUsage.value.input += event.input
-              totalUsage.value.output += event.output
+            if (event.usage) {
+              const u = event.usage
+              usage.value = { input: u.input, output: u.output }
+              totalUsage.value.input += u.input
+              totalUsage.value.output += u.output
               exchanges.value++
-            } else if (event.Usage) {
-              usage.value = { input: event.Usage.input, output: event.Usage.output }
             }
             break
 
           case 'done':
             msg.isStreaming = false
-            if (event.Stats) {
+            if (event.stats) {
               totalUsage.value = {
-                input: event.Stats.TotalInput,
-                output: event.Stats.TotalOutput,
+                input: event.stats.TotalInput,
+                output: event.stats.TotalOutput,
               }
-              exchanges.value = event.Stats.Exchanges
+              exchanges.value = event.stats.Exchanges
             }
             break
 
           case 'error':
-            error.value = event.message ?? event.Text ?? 'Unknown error'
+            error.value = event.message ?? event.text ?? 'Unknown error'
             msg.isStreaming = false
             break
 
@@ -173,7 +169,6 @@ export const useChatStore = defineStore('chat', () => {
   return {
     messages,
     isStreaming,
-    isAgentMode,
     currentSession,
     usage,
     totalUsage,

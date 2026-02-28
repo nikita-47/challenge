@@ -39,46 +39,46 @@ export interface TextDeltaEvent {
 
 export interface UsageEvent {
   type: 'usage'
-  input: number
-  output: number
-  Usage?: TokenUsage
-  Stats?: TokenStats
+  input?: number
+  output?: number
+  usage?: TokenUsage
+  stats?: TokenStats
 }
 
 export interface DoneEvent {
   type: 'done'
-  Turn?: number
-  Stats?: TokenStats
+  turn?: number
+  stats?: TokenStats
 }
 
 export interface ErrorEvent {
   type: 'error'
   message?: string
-  Text?: string
+  text?: string
 }
 
 export interface TurnEvent {
   type: 'turn'
-  Turn: number
-  MaxTurn: number
+  turn: number
+  max_turn: number
 }
 
 export interface ThinkingEvent {
   type: 'thinking'
-  Text: string
+  text: string
 }
 
 export interface ToolCallEvent {
   type: 'tool_call'
-  Tool: string
-  Input: Record<string, unknown>
+  tool: string
+  input: Record<string, unknown>
 }
 
 export interface ToolResultEvent {
   type: 'tool_result'
-  Tool: string
-  Output: string
-  IsError: boolean
+  tool: string
+  output: string
+  is_error: boolean
 }
 
 export interface CompressEvent {
