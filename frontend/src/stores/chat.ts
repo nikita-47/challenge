@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatMessage, ToolCall, TokenUsage } from '@/lib/types'
+import type { ChatMessage, ToolCall, TokenUsage, ChatSettings } from '@/lib/types'
 import { streamRequest } from '@/composables/useSSE'
 
 export const useChatStore = defineStore('chat', () => {
@@ -12,6 +12,7 @@ export const useChatStore = defineStore('chat', () => {
   const totalUsage = ref<TokenUsage>({ input: 0, output: 0 })
   const exchanges = ref(0)
   const error = ref<string | null>(null)
+  const settings = ref<ChatSettings | null>(null)
 
   let abortController: AbortController | null = null
 
@@ -19,12 +20,17 @@ export const useChatStore = defineStore('chat', () => {
     return totalUsage.value.input * 3.0 / 1e6 + totalUsage.value.output * 15.0 / 1e6
   })
 
+  function setSettings(s: ChatSettings) {
+    settings.value = s
+  }
+
   function clearMessages() {
     messages.value = []
     usage.value = { input: 0, output: 0 }
     totalUsage.value = { input: 0, output: 0 }
     exchanges.value = 0
     error.value = null
+    settings.value = null
   }
 
   function setMessages(msgs: ChatMessage[]) {
@@ -56,7 +62,15 @@ export const useChatStore = defineStore('chat', () => {
     const url = isAgentMode.value ? '/api/agent' : '/api/chat'
     const body = isAgentMode.value
       ? { task: text, session: currentSession.value }
-      : { message: text, session: currentSession.value }
+      : {
+          message: text,
+          session: currentSession.value,
+          ...(settings.value && {
+            system: settings.value.system,
+            maxTokens: settings.value.maxTokens,
+            temperature: settings.value.temperature,
+          }),
+        }
 
     let pendingToolCalls: ToolCall[] = []
 
@@ -166,9 +180,11 @@ export const useChatStore = defineStore('chat', () => {
     exchanges,
     totalCost,
     error,
+    settings,
     sendMessage,
     clearMessages,
     setMessages,
+    setSettings,
     stopStreaming,
   }
 })

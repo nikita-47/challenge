@@ -1,3 +1,10 @@
+export interface ChatSettings {
+  model: string
+  temperature: number
+  maxTokens: number
+  system: string
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string

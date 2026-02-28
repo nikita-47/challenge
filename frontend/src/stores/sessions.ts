@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { fetchSessions, fetchSession, deleteSessionAPI, renameSessionAPI } from '@/lib/api'
 import { useChatStore } from './chat'
-import type { ChatMessage } from '@/lib/types'
+import type { ChatMessage, ChatSettings } from '@/lib/types'
 
 export const useSessionsStore = defineStore('sessions', () => {
   const sessions = ref<string[]>([])
@@ -60,12 +60,15 @@ export const useSessionsStore = defineStore('sessions', () => {
     }
   }
 
-  function newChat() {
+  function newChat(name?: string, chatSettings?: ChatSettings) {
     const chat = useChatStore()
-    const name = `chat-${Date.now()}`
+    const sessionName = name?.trim() || `chat-${Date.now()}`
     chat.clearMessages()
-    chat.currentSession = name
-    sessions.value.unshift(name)
+    chat.currentSession = sessionName
+    if (chatSettings) {
+      chat.setSettings(chatSettings)
+    }
+    sessions.value.unshift(sessionName)
   }
 
   return {

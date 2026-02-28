@@ -6,6 +6,7 @@ export const useUIStore = defineStore('ui', () => {
   const leftSidebarOpen = ref(true)
   const rightSidebarOpen = ref(false)
   const config = ref<AppConfig | null>(null)
+  const newChatDialogOpen = ref(false)
 
   function toggleLeftSidebar() {
     leftSidebarOpen.value = !leftSidebarOpen.value
@@ -27,6 +28,7 @@ export const useUIStore = defineStore('ui', () => {
     leftSidebarOpen,
     rightSidebarOpen,
     config,
+    newChatDialogOpen,
     toggleLeftSidebar,
     toggleRightSidebar,
     loadConfig,

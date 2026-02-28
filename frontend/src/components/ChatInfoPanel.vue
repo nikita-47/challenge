@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { useUIStore } from '@/stores/ui'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -9,6 +10,18 @@ defineEmits<{ close: [] }>()
 
 const chat = useChatStore()
 const ui = useUIStore()
+
+const displayConfig = computed(() => {
+  if (chat.settings) {
+    return {
+      model: chat.settings.model,
+      maxTokens: chat.settings.maxTokens,
+      temperature: chat.settings.temperature,
+      system: chat.settings.system,
+    }
+  }
+  return ui.config
+})
 </script>
 
 <template>
@@ -68,24 +81,24 @@ const ui = useUIStore()
           </div>
           <div class="flex justify-between">
             <span class="text-muted-foreground">Model</span>
-            <span class="text-foreground text-xs truncate ml-2 max-w-[140px]" :title="ui.config?.model">
-              {{ ui.config?.model ?? '—' }}
+            <span class="text-foreground text-xs truncate ml-2 max-w-[140px]" :title="displayConfig?.model">
+              {{ displayConfig?.model ?? '—' }}
             </span>
           </div>
           <div class="flex justify-between">
             <span class="text-muted-foreground">Max tokens</span>
-            <span class="text-foreground">{{ ui.config?.maxTokens ?? '—' }}</span>
+            <span class="text-foreground">{{ displayConfig?.maxTokens ?? '—' }}</span>
           </div>
           <div class="flex justify-between">
             <span class="text-muted-foreground">Temperature</span>
             <span class="text-foreground">
-              {{ ui.config?.temperature === -1 ? 'default' : ui.config?.temperature ?? '—' }}
+              {{ displayConfig?.temperature === -1 ? 'default' : displayConfig?.temperature ?? '—' }}
             </span>
           </div>
-          <div v-if="ui.config?.system" class="space-y-1">
+          <div v-if="displayConfig?.system" class="space-y-1">
             <span class="text-muted-foreground">System prompt</span>
             <p class="text-foreground text-xs bg-background rounded p-2 break-words">
-              {{ ui.config.system }}
+              {{ displayConfig.system }}
             </p>
           </div>
           <div v-else class="flex justify-between">

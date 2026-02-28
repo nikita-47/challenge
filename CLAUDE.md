@@ -24,11 +24,11 @@ See `TASKS.md` for all daily assignments and their status.
 - `src/stores/sessions.ts` — Pinia: session list, load/delete
 - `src/composables/useSSE.ts` — fetch + ReadableStream SSE parser
 - `src/stores/ui.ts` — Pinia: UI state (right panel, server config)
-- `src/components/` — ChatWindow, MessageBubble, ToolCallCard, ChatInput, TokenBar, SessionPanel, ChatInfoPanel
+- `src/components/` — ChatWindow, MessageBubble, ToolCallCard, ChatInput, TokenBar, SessionPanel, ChatInfoPanel, NewChatDialog
 - `src/lib/types.ts` — TypeScript types mirroring Go events
 - `src/lib/api.ts` — REST API client (sessions)
 - `src/lib/utils.ts` — `cn()` utility (clsx + tailwind-merge)
-- `src/components/ui/` — shadcn-vue components (Button, ScrollArea, Textarea, Checkbox, Collapsible, Badge, Card, Separator)
+- `src/components/ui/` — shadcn-vue components (Button, ScrollArea, Textarea, Checkbox, Collapsible, Badge, Card, Separator, Dialog, Input, Label, Select, Slider)
 
 ### Other
 - `TASKS.md` — daily task log (assignments, status, notes)

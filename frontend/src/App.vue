@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import NewChatDialog from '@/components/NewChatDialog.vue'
 import SessionPanel from '@/components/SessionPanel.vue'
 import ChatInfoPanel from '@/components/ChatInfoPanel.vue'
 import ChatWindow from '@/components/ChatWindow.vue'
@@ -64,4 +65,5 @@ onMounted(() => {
       @close="ui.toggleRightSidebar()"
     />
   </div>
+  <NewChatDialog />
 </template>

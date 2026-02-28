@@ -2,6 +2,7 @@
 import { ref, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
+import { useUIStore } from '@/stores/ui'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
@@ -9,6 +10,7 @@ defineEmits<{ close: [] }>()
 
 const sessions = useSessionsStore()
 const chat = useChatStore()
+const ui = useUIStore()
 
 const editingName = ref<string | null>(null)
 const editValue = ref('')
@@ -65,7 +67,7 @@ function cancelEdit() {
       <Button
         class="w-full"
         size="sm"
-        @click="sessions.newChat()"
+        @click="ui.newChatDialogOpen = true"
       >
         + New Chat
       </Button>
