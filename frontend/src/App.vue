@@ -1,25 +1,67 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
 import SessionPanel from '@/components/SessionPanel.vue'
+import ChatInfoPanel from '@/components/ChatInfoPanel.vue'
 import ChatWindow from '@/components/ChatWindow.vue'
 import ChatInput from '@/components/ChatInput.vue'
 import TokenBar from '@/components/TokenBar.vue'
+import { Button } from '@/components/ui/button'
 import { useSessionsStore } from '@/stores/sessions'
+import { useUIStore } from '@/stores/ui'
 
 const sessionsStore = useSessionsStore()
+const ui = useUIStore()
 
 onMounted(() => {
   sessionsStore.loadList()
+  ui.loadConfig()
 })
 </script>
 
 <template>
   <div class="flex h-screen w-screen overflow-hidden">
-    <SessionPanel class="w-64 shrink-0" />
+    <!-- Left sidebar -->
+    <SessionPanel
+      v-if="ui.leftSidebarOpen"
+      class="w-64 shrink-0"
+      @close="ui.toggleLeftSidebar()"
+    />
+
+    <!-- Main area -->
     <div class="flex flex-1 flex-col min-w-0">
+      <!-- Toolbar -->
+      <div class="flex items-center gap-1 px-2 py-1 border-b border-border bg-background">
+        <Button
+          variant="ghost"
+          size="icon"
+          class="h-7 w-7"
+          @click="ui.toggleLeftSidebar()"
+          title="Toggle sessions"
+        >
+          &#9776;
+        </Button>
+        <div class="flex-1" />
+        <Button
+          variant="ghost"
+          size="icon"
+          class="h-7 w-7"
+          @click="ui.toggleRightSidebar()"
+          title="Toggle chat info"
+        >
+          &#9432;
+        </Button>
+      </div>
+
       <ChatWindow class="flex-1 overflow-hidden" />
       <TokenBar />
       <ChatInput />
     </div>
+
+    <!-- Right sidebar -->
+    <ChatInfoPanel
+      v-if="ui.rightSidebarOpen"
+      class="w-72 shrink-0"
+      @close="ui.toggleRightSidebar()"
+    />
   </div>
 </template>

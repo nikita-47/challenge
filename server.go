@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func startServer(apiKey string, port int) {
+func startServer(apiKey string, cfg config) {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
@@ -45,11 +45,31 @@ func startServer(apiKey string, port int) {
 		switch r.Method {
 		case http.MethodGet:
 			handleGetSession(w, r, name)
+		case http.MethodPut:
+			handleRenameSession(w, r, name)
 		case http.MethodDelete:
 			handleDeleteSession(w, r, name)
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
+	})
+
+	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		model := "claude-sonnet-4-5-20250929"
+		if cfg.model != "" {
+			model = cfg.model
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"model":       model,
+			"maxTokens":   cfg.maxTokens,
+			"temperature": cfg.temperature,
+			"system":      cfg.system,
+		})
 	})
 
 	// Static files — serve frontend/dist/ if it exists.
@@ -67,7 +87,7 @@ func startServer(apiKey string, port int) {
 		})
 	}
 
-	addr := fmt.Sprintf(":%d", port)
+	addr := fmt.Sprintf(":%d", cfg.port)
 	fmt.Printf("Server listening on http://localhost%s\n", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
@@ -243,6 +263,30 @@ func handleGetSession(w http.ResponseWriter, r *http.Request, name string) {
 		"messages": cw.Messages,
 		"summary":  cw.Summary,
 	})
+}
+
+// ─── DELETE /api/sessions/:name ──────────────────────────────────────────────
+
+// ─── PUT /api/sessions/:name ─────────────────────────────────────────────────
+
+func handleRenameSession(w http.ResponseWriter, r *http.Request, oldName string) {
+	var req struct {
+		NewName string `json:"newName"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.NewName == "" {
+		http.Error(w, "newName is required", http.StatusBadRequest)
+		return
+	}
+	if err := renameSession(oldName, req.NewName); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "renamed", "name": req.NewName})
 }
 
 // ─── DELETE /api/sessions/:name ──────────────────────────────────────────────

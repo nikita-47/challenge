@@ -1,17 +1,67 @@
 <script setup lang="ts">
+import { ref, nextTick } from 'vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 
+defineEmits<{ close: [] }>()
+
 const sessions = useSessionsStore()
 const chat = useChatStore()
+
+const editingName = ref<string | null>(null)
+const editValue = ref('')
+let renaming = false
+
+function startEdit(name: string) {
+  editingName.value = name
+  editValue.value = name
+  nextTick(() => {
+    const el = document.querySelector<HTMLInputElement>('[data-rename-input]')
+    el?.focus()
+    el?.select()
+  })
+}
+
+async function confirmRename(oldName: string) {
+  if (renaming) {
+    return
+  }
+  const newName = editValue.value.trim()
+  editingName.value = null
+  if (!newName || newName === oldName) {
+    return
+  }
+  renaming = true
+  try {
+    await sessions.renameSession(oldName, newName)
+  } catch (e) {
+    console.error('Rename failed:', e)
+  } finally {
+    renaming = false
+  }
+}
+
+function cancelEdit() {
+  editingName.value = null
+}
 </script>
 
 <template>
   <aside class="flex flex-col border-r border-border bg-muted h-full">
+    <div class="p-3 border-b border-border flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-foreground">Sessions</h2>
+      <Button
+        variant="ghost"
+        size="icon"
+        class="h-6 w-6"
+        @click="$emit('close')"
+      >
+        &times;
+      </Button>
+    </div>
     <div class="p-3 border-b border-border">
-      <h2 class="text-sm font-semibold text-foreground mb-2">Sessions</h2>
       <Button
         class="w-full"
         size="sm"
@@ -30,13 +80,30 @@ const chat = useChatStore()
           :key="name"
           class="group flex items-center justify-between px-2 py-1.5 rounded-md text-sm cursor-pointer transition-colors"
           :class="chat.currentSession === name ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-background'"
-          @click="sessions.loadSession(name)"
+          @click="editingName !== name && sessions.loadSession(name)"
         >
-          <span class="truncate">{{ name }}</span>
+          <input
+            v-if="editingName === name"
+            data-rename-input
+            v-model="editValue"
+            class="bg-transparent border border-ring rounded px-1 text-sm w-full outline-none text-foreground"
+            @keydown.enter="confirmRename(name)"
+            @keydown.escape.stop="cancelEdit()"
+            @blur="confirmRename(name)"
+            @click.stop
+          />
+          <span
+            v-else
+            class="truncate"
+            @dblclick.stop="startEdit(name)"
+          >
+            {{ name }}
+          </span>
           <Button
+            v-if="editingName !== name"
             variant="ghost"
             size="icon"
-            class="opacity-0 group-hover:opacity-100 h-6 w-6 text-destructive hover:text-destructive"
+            class="opacity-0 group-hover:opacity-100 h-6 w-6 shrink-0 text-destructive hover:text-destructive"
             @click.stop="sessions.deleteSession(name)"
             title="Delete session"
           >

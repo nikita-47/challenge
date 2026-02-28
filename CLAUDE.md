@@ -23,7 +23,8 @@ See `TASKS.md` for all daily assignments and their status.
 - `src/stores/chat.ts` — Pinia: messages, streaming, tokens
 - `src/stores/sessions.ts` — Pinia: session list, load/delete
 - `src/composables/useSSE.ts` — fetch + ReadableStream SSE parser
-- `src/components/` — ChatWindow, MessageBubble, ToolCallCard, ChatInput, TokenBar, SessionPanel
+- `src/stores/ui.ts` — Pinia: UI state (right panel, server config)
+- `src/components/` — ChatWindow, MessageBubble, ToolCallCard, ChatInput, TokenBar, SessionPanel, ChatInfoPanel
 - `src/lib/types.ts` — TypeScript types mirroring Go events
 - `src/lib/api.ts` — REST API client (sessions)
 - `src/lib/utils.ts` — `cn()` utility (clsx + tailwind-merge)
@@ -108,7 +109,7 @@ go run . --server
 ## Rules
 
 - Keep it simple — avoid over-engineering
-- No external dependencies unless absolutely necessary
+- No external dependencies in Go unless absolutely necessary (frontend deps via npm are fine)
 - `.env` must never be committed
 - Before starting a new day's task, read `TASKS.md` to understand what was built before
 - Every new feature/tool must be accessible both from interactive chat (`/command`) and from CLI (`--flag`) so it can be used non-interactively

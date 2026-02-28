@@ -1,3 +1,6 @@
 .env
 challenge
 .chat_history/
+.agents/
+.playwright-mcp/
+skills-lock.json

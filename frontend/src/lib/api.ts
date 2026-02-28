@@ -15,6 +15,33 @@ export async function fetchSession(name: string) {
   return resp.json()
 }
 
+export async function renameSessionAPI(oldName: string, newName: string) {
+  const resp = await fetch(`/api/sessions/${encodeURIComponent(oldName)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newName }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to rename session: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export interface AppConfig {
+  model: string
+  maxTokens: number
+  temperature: number
+  system: string
+}
+
+export async function fetchConfig(): Promise<AppConfig> {
+  const resp = await fetch('/api/config')
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch config: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
 export async function deleteSessionAPI(name: string) {
   const resp = await fetch(`/api/sessions/${encodeURIComponent(name)}`, {
     method: 'DELETE',

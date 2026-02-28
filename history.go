@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -63,6 +64,14 @@ func deleteSession(name string) error {
 		return nil
 	}
 	return err
+}
+
+func renameSession(oldName, newName string) error {
+	newPath := sessionPath(newName)
+	if _, err := os.Stat(newPath); err == nil {
+		return fmt.Errorf("session %q already exists", newName)
+	}
+	return os.Rename(sessionPath(oldName), newPath)
 }
 
 // listSessions returns names of all saved sessions.

@@ -65,7 +65,7 @@ func main() {
 	}
 
 	if cfg.server {
-		startServer(apiKey, cfg.port)
+		startServer(apiKey, cfg)
 		return
 	}
 
