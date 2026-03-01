@@ -47,6 +47,8 @@ export const useSessionsStore = defineStore('sessions', () => {
           temperature: data.settings.temperature ?? 0.7,
           maxTokens: data.settings.max_tokens ?? data.settings.maxTokens ?? 1024,
           system: data.settings.system ?? '',
+          strategy: data.settings.strategy ?? undefined,
+          windowSize: data.settings.window_size ?? data.settings.windowSize ?? undefined,
         })
       } else {
         chat.setSettings(null)
@@ -56,6 +58,14 @@ export const useSessionsStore = defineStore('sessions', () => {
       }
       chat.hasSummary = !!data.summary
       chat.compressionCount = msgs.filter((m: ChatMessage) => m.event?.type === 'compress').length
+      chat.facts = data.facts ?? {}
+      chat.branches = (data.branches ?? []).map((b: any) => ({
+        name: b.name,
+        forkIndex: b.forkIndex ?? b.fork_index ?? 0,
+        messageCount: b.messageCount ?? b.message_count ?? 0,
+        createdAt: b.createdAt ?? b.created_at ?? '',
+      }))
+      chat.activeBranch = data.activeBranch ?? data.active_branch ?? 'main'
     } catch (e) {
       console.error('Failed to load session:', e)
     }

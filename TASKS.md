@@ -210,6 +210,31 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 10 — Context Management Strategies ✅
+
+**Assignment:** Implement 3 alternative context management strategies beyond simple compression: Sliding Window, Sticky Facts (key-value memory), and Branching. Strategy selected at chat creation, configurable window size N.
+
+**What was built on top of Day 9:**
+- `strategy.go` — central dispatcher: `buildAPIMessages()`, `maybeProcess()`, `activeMessages()`, `appendMessage()`, `getStrategy()`, `getWindowSize()`
+- `strategy_window.go` — Sliding Window: `buildWindowMessages()` keeps last N messages only
+- `strategy_facts.go` — Sticky Facts: `buildFactsMessages()` prepends facts as user+ack pair; `maybeExtractFacts()` calls API after each exchange to extract key-value facts; `extractFacts()` non-streaming API call
+- `strategy_branch.go` — Branching: `branch` struct, `createBranch()`, `switchBranch()`, `listBranches()`, `deleteBranch()`, `buildBranchMessages()`
+- `BranchSelector.vue` — toolbar component for branch switching and creation (dropdown + new branch input)
+- `NewChatDialog.vue` — added strategy selector (Summary/Window/Facts/Branch) and conditional windowSize input
+- `ChatInfoPanel.vue` — shows strategy type, window size, facts list, branch info; added Info/Raw tab switcher to view raw session JSON
+- `ChatWindow.vue` — handles `branch_fork` system event as visual fork marker
+- `history.go` — extended `sessionFile`/`sessionSettings` with Strategy, WindowSize, Facts, Branches, ActiveBranch
+- `server.go` — branch REST endpoints (POST/GET `/branches`, PUT `/branch`, GET `/raw`); facts_updated SSE event; strategy dispatcher integration
+- `chat.go` — CLI commands `/strategy`, `/facts`, `/branch`, `/switch`, `/branches`; strategy dispatcher integration
+- `main.go` — `--strategy` and `--window-size` CLI flags
+- `types.ts` — `ContextStrategy`, `BranchInfo`, `FactsUpdatedEvent` types
+- `api.ts` — `createBranchAPI()`, `switchBranchAPI()`, `fetchBranchesAPI()`, `fetchSessionRaw()`
+- `chat.ts` / `sessions.ts` — facts, branches, activeBranch state management
+
+**Key code:** `buildAPIMessages()`, `maybeProcess()`, `activeMessages()`, `appendMessage()`, `buildWindowMessages()`, `buildFactsMessages()`, `extractFacts()`, `createBranch()`, `switchBranch()`, `handleGetSessionRaw()`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

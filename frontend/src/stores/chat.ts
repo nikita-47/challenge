@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatMessage, ToolCall, TokenUsage, ChatSettings } from '@/lib/types'
+import type { ChatMessage, ToolCall, TokenUsage, ChatSettings, BranchInfo } from '@/lib/types'
 import { streamRequest } from '@/composables/useSSE'
 
 export const useChatStore = defineStore('chat', () => {
@@ -14,6 +14,10 @@ export const useChatStore = defineStore('chat', () => {
   const settings = ref<ChatSettings | null>(null)
   const hasSummary = ref(false)
   const compressionCount = ref(0)
+
+  const facts = ref<Record<string, string>>({})
+  const branches = ref<BranchInfo[]>([])
+  const activeBranch = ref('main')
 
   let abortController: AbortController | null = null
 
@@ -35,6 +39,9 @@ export const useChatStore = defineStore('chat', () => {
     hasSummary.value = false
     compressionCount.value = 0
     tokensSaved.value = 0
+    facts.value = {}
+    branches.value = []
+    activeBranch.value = 'main'
   }
 
   const tokensSaved = ref(0)
@@ -80,6 +87,8 @@ export const useChatStore = defineStore('chat', () => {
         system: settings.value.system,
         maxTokens: settings.value.maxTokens,
         temperature: settings.value.temperature,
+        strategy: settings.value.strategy,
+        windowSize: settings.value.windowSize,
       }),
     }
 
@@ -152,6 +161,10 @@ export const useChatStore = defineStore('chat', () => {
             msg.isStreaming = false
             break
 
+          case 'facts_updated':
+            facts.value = event.facts
+            break
+
           case 'compress': {
             hasSummary.value = true
             compressionCount.value++
@@ -209,5 +222,8 @@ export const useChatStore = defineStore('chat', () => {
     hasSummary,
     compressionCount,
     tokensSaved,
+    facts,
+    branches,
+    activeBranch,
   }
 })

@@ -29,11 +29,30 @@ func startServer(apiKey string, cfg config) {
 	})
 
 	mux.HandleFunc("/api/sessions/", func(w http.ResponseWriter, r *http.Request) {
-		name := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
-		if name == "" {
+		path := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
+		if path == "" {
 			http.Error(w, "session name required", http.StatusBadRequest)
 			return
 		}
+
+		// Check for branch sub-routes: /api/sessions/:name/branches or /api/sessions/:name/branch
+		if i := strings.Index(path, "/"); i >= 0 {
+			name := path[:i]
+			sub := path[i+1:]
+			switch {
+			case sub == "branches":
+				handleBranches(w, r, apiKey, name)
+			case sub == "branch":
+				handleSwitchBranch(w, r, name)
+			case sub == "raw" && r.Method == http.MethodGet:
+				handleGetSessionRaw(w, name)
+			default:
+				http.Error(w, "not found", http.StatusNotFound)
+			}
+			return
+		}
+
+		name := path
 		switch r.Method {
 		case http.MethodGet:
 			handleGetSession(w, r, name)
@@ -113,6 +132,8 @@ type chatRequest struct {
 	System      string  `json:"system"`
 	MaxTokens   int     `json:"maxTokens"`
 	Temperature float64 `json:"temperature"`
+	Strategy    string  `json:"strategy"`
+	WindowSize  int     `json:"windowSize"`
 }
 
 func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
@@ -141,15 +162,26 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 		sseWrite(w, ev)
 	}
 
+	// Apply strategy from request if session has no strategy set.
+	if cw.Settings == nil {
+		cw.Settings = &sessionSettings{}
+	}
+	if req.Strategy != "" && cw.Settings.Strategy == "" {
+		cw.Settings.Strategy = req.Strategy
+	}
+	if req.WindowSize > 0 && cw.Settings.WindowSize == 0 {
+		cw.Settings.WindowSize = req.WindowSize
+	}
+
 	// Restore cumulative stats from session (or start fresh).
 	stats := cw.Stats.toTokenStats()
 
-	// Compress history BEFORE adding the new message.
-	ci, compErr := maybeCompress(apiKey, cw, &stats)
+	// Pre-process context (compress for summary strategy, noop for others).
+	ci, compErr := maybeProcess(apiKey, cw, &stats)
 	if compErr != nil {
 		// Non-fatal: continue with full history.
 	} else if ci != nil {
-		cw.Messages = append(cw.Messages, message{
+		appendMessage(cw, message{
 			Role: "system",
 			Event: &messageEvent{
 				Type:         "compress",
@@ -166,7 +198,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 		})
 	}
 
-	compressed := buildCompressedMessages(cw)
+	compressed := buildAPIMessages(cw)
 
 	agent := newAgent(apiKey, cfg)
 	result, err := agent.Run(req.Message, compressed, emit)
@@ -181,14 +213,25 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	stats.Exchanges += agent.Stats.Exchanges
 
 	// Save to session (append to raw Messages, not compressed).
-	cw.Messages = append(cw.Messages, message{Role: "user", Content: req.Message})
-	cw.Messages = append(cw.Messages, message{Role: "assistant", Content: result})
-	cw.Settings = &sessionSettings{
-		Model:       cfg.model,
-		Temperature: cfg.temperature,
-		MaxTokens:   cfg.maxTokens,
-		System:      cfg.system,
+	appendMessage(cw, message{Role: "user", Content: req.Message})
+	appendMessage(cw, message{Role: "assistant", Content: result})
+
+	// Post-process: extract facts for facts strategy.
+	if getStrategy(cw) == strategyFacts {
+		if err := maybeExtractFacts(apiKey, cw, &stats); err != nil {
+			// Non-fatal: log but continue.
+		} else if len(cw.Facts) > 0 {
+			sseWrite(w, map[string]any{
+				"type":  "facts_updated",
+				"facts": cw.Facts,
+			})
+		}
 	}
+
+	cw.Settings.Model = cfg.model
+	cw.Settings.Temperature = cfg.temperature
+	cw.Settings.MaxTokens = cfg.maxTokens
+	cw.Settings.System = cfg.system
 	cw.Stats = statsFromToken(stats)
 	_ = saveSessionCW(req.Session, cw)
 }
@@ -217,13 +260,43 @@ func handleGetSession(w http.ResponseWriter, r *http.Request, name string) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
+	// Build branch info for response.
+	var branchInfos []map[string]any
+	for _, b := range cw.Branches {
+		branchInfos = append(branchInfos, map[string]any{
+			"name":         b.Name,
+			"forkIndex":    b.ForkIndex,
+			"messageCount": len(b.Messages),
+			"createdAt":    b.CreatedAt,
+		})
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"messages": cw.Messages,
-		"summary":  cw.Summary,
-		"settings": cw.Settings,
-		"stats":    cw.Stats,
+		"messages":     activeMessages(cw),
+		"summary":      cw.Summary,
+		"settings":     cw.Settings,
+		"stats":        cw.Stats,
+		"facts":        cw.Facts,
+		"branches":     branchInfos,
+		"activeBranch": cw.ActiveBranch,
 	})
+}
+
+// ─── GET /api/sessions/:name/raw ─────────────────────────────────────────────
+
+func handleGetSessionRaw(w http.ResponseWriter, name string) {
+	data, err := os.ReadFile(sessionPath(name))
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
 }
 
 // ─── DELETE /api/sessions/:name ──────────────────────────────────────────────
@@ -259,4 +332,124 @@ func handleDeleteSession(w http.ResponseWriter, r *http.Request, name string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+}
+
+// ─── Branch endpoints ───────────────────────────────────────────────────────
+
+func handleBranches(w http.ResponseWriter, r *http.Request, apiKey string, sessionName string) {
+	switch r.Method {
+	case http.MethodGet:
+		cw, err := loadSessionCW(sessionName)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if cw == nil {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		var infos []map[string]any
+		for _, b := range cw.Branches {
+			infos = append(infos, map[string]any{
+				"name":         b.Name,
+				"forkIndex":    b.ForkIndex,
+				"messageCount": len(b.Messages),
+				"createdAt":    b.CreatedAt,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"branches":     infos,
+			"activeBranch": cw.ActiveBranch,
+		})
+
+	case http.MethodPost:
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		cw, err := loadSessionCW(sessionName)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if cw == nil {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		if err := createBranch(cw, req.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		_ = saveSessionCW(sessionName, cw)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "created", "branch": req.Name})
+
+	case http.MethodDelete:
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		cw, err := loadSessionCW(sessionName)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if cw == nil {
+			http.Error(w, "session not found", http.StatusNotFound)
+			return
+		}
+		if err := deleteBranch(cw, req.Name); err != nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		_ = saveSessionCW(sessionName, cw)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func handleSwitchBranch(w http.ResponseWriter, r *http.Request, sessionName string) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	cw, err := loadSessionCW(sessionName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if cw == nil {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
+	if err := switchBranch(cw, req.Name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_ = saveSessionCW(sessionName, cw)
+
+	// Return messages for the new branch.
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":   "switched",
+		"branch":   req.Name,
+		"messages": activeMessages(cw),
+	})
 }

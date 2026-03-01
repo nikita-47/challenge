@@ -1,8 +1,19 @@
+export type ContextStrategy = 'summary' | 'window' | 'facts' | 'branch'
+
 export interface ChatSettings {
   model: string
   temperature: number
   maxTokens: number
   system: string
+  strategy?: ContextStrategy
+  windowSize?: number
+}
+
+export interface BranchInfo {
+  name: string
+  forkIndex: number
+  messageCount: number
+  createdAt: string
 }
 
 export interface SystemEvent {
@@ -96,6 +107,11 @@ export interface CompressEvent {
   tokensSaved: number
 }
 
+export interface FactsUpdatedEvent {
+  type: 'facts_updated'
+  facts: Record<string, string>
+}
+
 export type SSEEvent =
   | TextDeltaEvent
   | UsageEvent
@@ -106,4 +122,5 @@ export type SSEEvent =
   | ToolCallEvent
   | ToolResultEvent
   | CompressEvent
+  | FactsUpdatedEvent
   | { type: 'text'; Text: string }

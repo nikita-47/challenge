@@ -13,10 +13,13 @@ const compressThreshold = 10 // compress when this many messages accumulate
 
 // contextWindow tracks current messages and a single rolling summary.
 type contextWindow struct {
-	Summary  string           // accumulated summary of all previous messages (empty = none)
-	Messages []message        // current unsummarized messages (≤ compressThreshold)
-	Settings *sessionSettings // chat settings (model, temperature, maxTokens, system)
-	Stats    *sessionStats    // cumulative token stats for the session
+	Summary      string            // accumulated summary of all previous messages (empty = none)
+	Messages     []message         // current unsummarized messages (≤ compressThreshold)
+	Settings     *sessionSettings  // chat settings (model, temperature, maxTokens, system)
+	Stats        *sessionStats     // cumulative token stats for the session
+	Facts        map[string]string // key-value memory for facts strategy
+	Branches     []branch          // dialog branches for branch strategy
+	ActiveBranch string            // current active branch name ("" or "main" = main)
 }
 
 // compressInfo holds details about a compression event.

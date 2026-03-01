@@ -14,6 +14,8 @@ function formatSystemEvent(msg: ChatMessage): string {
   switch (msg.event.type) {
     case 'compress':
       return `compressed ${msg.event.messageCount} messages · saved ~${msg.event.tokensSaved} tokens`
+    case 'branch_fork':
+      return `branched here: "${msg.content}"`
     default:
       return msg.event.type
   }

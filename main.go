@@ -23,6 +23,8 @@ type config struct {
 	model        string
 	server       bool
 	port         int
+	strategy     string
+	windowSize   int
 }
 
 func main() {
@@ -90,6 +92,8 @@ func parseArgs() config {
 	flag.StringVar(&cfg.model, "model", "", "model name for OpenAI-compatible API")
 	flag.BoolVar(&cfg.server, "server", false, "start HTTP server with Vue UI")
 	flag.IntVar(&cfg.port, "port", 8080, "HTTP server port")
+	flag.StringVar(&cfg.strategy, "strategy", "", "context strategy: summary|window|facts|branch")
+	flag.IntVar(&cfg.windowSize, "window-size", 20, "number of messages to keep for window/facts strategies")
 	flag.Parse()
 	return cfg
 }
@@ -122,6 +126,12 @@ func printBanner(cfg config, openaiKey string) {
 	if cfg.verbose {
 		fmt.Printf("Verbose:    on (curl output to stderr)\n")
 	}
+	if cfg.strategy != "" {
+		fmt.Printf("Strategy:   %s\n", cfg.strategy)
+		if cfg.strategy == strategyWindow || cfg.strategy == strategyFacts {
+			fmt.Printf("Window:     %d messages\n", cfg.windowSize)
+		}
+	}
 	if cfg.session != "" {
 		fmt.Printf("Session:    %s\n", cfg.session)
 	}
@@ -146,6 +156,11 @@ func printHelp() {
 	fmt.Println("  /compress            — show context compression status and summaries")
 	fmt.Println("  /save [name]         — save session (default: current session)")
 	fmt.Println("  /load <name>         — load a named session")
+	fmt.Println("  /strategy            — show current context strategy and state")
+	fmt.Println("  /facts               — show extracted facts (facts strategy)")
+	fmt.Println("  /branch <name>       — create a new branch (branch strategy)")
+	fmt.Println("  /switch <name>       — switch to a branch (branch strategy)")
+	fmt.Println("  /branches            — list all branches (branch strategy)")
 	fmt.Println("  exit / quit          — quit")
 	fmt.Println()
 	fmt.Println("Flags (set at startup):")
@@ -162,5 +177,7 @@ func printHelp() {
 	fmt.Println("  --verbose           print each request as curl before sending")
 	fmt.Println("  --base-url string   OpenAI-compatible base URL (e.g. http://localhost:1234)")
 	fmt.Println("  --model string      model name for OpenAI-compatible API")
+	fmt.Println("  --strategy string   context strategy: summary|window|facts|branch")
+	fmt.Println("  --window-size int   messages to keep for window/facts (default 20)")
 	fmt.Println()
 }

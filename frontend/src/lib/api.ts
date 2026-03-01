@@ -50,3 +50,43 @@ export async function deleteSessionAPI(name: string) {
     throw new Error(`Failed to delete session: ${resp.statusText}`)
   }
 }
+
+export async function createBranchAPI(session: string, branchName: string) {
+  const resp = await fetch(`/api/sessions/${encodeURIComponent(session)}/branches`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: branchName }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to create branch: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function switchBranchAPI(session: string, branchName: string) {
+  const resp = await fetch(`/api/sessions/${encodeURIComponent(session)}/branch`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: branchName }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to switch branch: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function fetchSessionRaw(name: string): Promise<string> {
+  const resp = await fetch(`/api/sessions/${encodeURIComponent(name)}/raw`)
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch raw session: ${resp.statusText}`)
+  }
+  return resp.text()
+}
+
+export async function fetchBranchesAPI(session: string) {
+  const resp = await fetch(`/api/sessions/${encodeURIComponent(session)}/branches`)
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch branches: ${resp.statusText}`)
+  }
+  return resp.json()
+}

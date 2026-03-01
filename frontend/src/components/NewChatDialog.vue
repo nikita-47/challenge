@@ -22,11 +22,18 @@ import {
 import { Slider } from '@/components/ui/slider'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
-import type { ChatSettings } from '@/lib/types'
+import type { ChatSettings, ContextStrategy } from '@/lib/types'
+
+const strategies: { value: ContextStrategy; label: string }[] = [
+  { value: 'summary', label: 'Summary (default)' },
+  { value: 'window', label: 'Sliding Window' },
+  { value: 'facts', label: 'Sticky Facts' },
+  { value: 'branch', label: 'Branching' },
+]
 
 const models = [
   'claude-sonnet-4-5-20250929',
-  'claude-haiku-3-5-20241022',
+  'claude-3-5-haiku-20241022',
   'claude-opus-4-20250514',
   'gpt-4o-mini',
   'gpt-4o',
@@ -40,6 +47,8 @@ const model = ref('')
 const temperature = ref([0.7])
 const maxTokens = ref(1024)
 const system = ref('')
+const strategy = ref<ContextStrategy>('summary')
+const windowSize = ref(20)
 
 watch(() => ui.newChatDialogOpen, (open) => {
   if (open) {
@@ -49,6 +58,8 @@ watch(() => ui.newChatDialogOpen, (open) => {
     temperature.value = [t != null && t >= 0 ? t : 0.7]
     maxTokens.value = ui.config?.maxTokens ?? 1024
     system.value = ui.config?.system ?? ''
+    strategy.value = 'summary'
+    windowSize.value = 20
   }
 })
 
@@ -58,6 +69,8 @@ function confirm() {
     temperature: temperature.value[0] ?? 0.7,
     maxTokens: maxTokens.value,
     system: system.value,
+    strategy: strategy.value,
+    windowSize: strategy.value === 'window' || strategy.value === 'facts' ? windowSize.value : undefined,
   }
   sessions.newChat(chatName.value || undefined, s)
   ui.newChatDialogOpen = false
@@ -94,6 +107,31 @@ function confirm() {
               </SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <div class="space-y-2">
+          <Label>Context Strategy</Label>
+          <Select v-model="strategy">
+            <SelectTrigger>
+              <SelectValue placeholder="Select strategy" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem v-for="s in strategies" :key="s.value" :value="s.value">
+                {{ s.label }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div v-if="strategy === 'window' || strategy === 'facts'" class="space-y-2">
+          <Label for="window-size">Window size (messages)</Label>
+          <Input
+            id="window-size"
+            type="number"
+            v-model="windowSize"
+            :min="2"
+            :max="100"
+          />
         </div>
 
         <div class="space-y-2">

@@ -76,6 +76,17 @@ func runChat(apiKey, openaiKey string, cfg config) {
 	if loaded != nil {
 		cw = loaded
 	}
+	// Apply strategy from CLI flags if session has no strategy set.
+	if cw.Settings == nil {
+		cw.Settings = &sessionSettings{}
+	}
+	if cfg.strategy != "" && cw.Settings.Strategy == "" {
+		cw.Settings.Strategy = cfg.strategy
+	}
+	if cfg.windowSize > 0 && cw.Settings.WindowSize == 0 {
+		cw.Settings.WindowSize = cfg.windowSize
+	}
+
 	stats := cw.Stats.toTokenStats()
 	if len(cw.Messages) > 0 {
 		name := sessionName
@@ -85,6 +96,9 @@ func runChat(apiKey, openaiKey string, cfg config) {
 		fmt.Printf("Resumed session '%s' (%d messages", name, len(cw.Messages))
 		if cw.Summary != "" {
 			fmt.Printf(", has summary")
+		}
+		if s := getStrategy(cw); s != strategySummary {
+			fmt.Printf(", strategy: %s", s)
 		}
 		fmt.Println(")")
 		fmt.Println()
@@ -163,8 +177,8 @@ func runChat(apiKey, openaiKey string, cfg config) {
 				fmt.Println()
 
 				// Add flattened messages to history for persistence.
-				cw.Messages = append(cw.Messages, message{Role: "user", Content: task})
-				cw.Messages = append(cw.Messages, message{Role: "assistant", Content: result})
+				appendMessage(cw, message{Role: "user", Content: task})
+				appendMessage(cw, message{Role: "assistant", Content: result})
 
 				cw.Stats = statsFromToken(stats)
 				if err := saveSessionCW(sessionName, cw); err != nil {
@@ -213,15 +227,100 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			}
 			fmt.Println()
 			continue
+		case input == "/strategy":
+			s := getStrategy(cw)
+			fmt.Printf("Strategy: %s\n", s)
+			if s == strategyWindow || s == strategyFacts {
+				fmt.Printf("Window size: %d\n", getWindowSize(cw))
+			}
+			if s == strategyFacts && len(cw.Facts) > 0 {
+				fmt.Printf("Facts: %d entries\n", len(cw.Facts))
+			}
+			if s == strategyBranch {
+				branches := listBranches(cw)
+				active := cw.ActiveBranch
+				if active == "" {
+					active = "main"
+				}
+				fmt.Printf("Branches: %s (active: %s)\n", strings.Join(branches, ", "), active)
+			}
+			fmt.Println()
+			continue
+		case input == "/facts":
+			if getStrategy(cw) != strategyFacts {
+				fmt.Println("Facts are only available with the 'facts' strategy.")
+			} else if len(cw.Facts) == 0 {
+				fmt.Println("No facts extracted yet.")
+			} else {
+				fmt.Println("Current facts:")
+				for k, v := range cw.Facts {
+					fmt.Printf("  %s: %s\n", k, v)
+				}
+			}
+			fmt.Println()
+			continue
+		case strings.HasPrefix(input, "/branch "):
+			name := strings.TrimSpace(strings.TrimPrefix(input, "/branch "))
+			if getStrategy(cw) != strategyBranch {
+				fmt.Println("Branching is only available with the 'branch' strategy.")
+			} else if err := createBranch(cw, name); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			} else {
+				fmt.Printf("Created and switched to branch '%s'.\n", name)
+				cw.Stats = statsFromToken(stats)
+				_ = saveSessionCW(sessionName, cw)
+			}
+			fmt.Println()
+			continue
+		case strings.HasPrefix(input, "/switch "):
+			name := strings.TrimSpace(strings.TrimPrefix(input, "/switch "))
+			if getStrategy(cw) != strategyBranch {
+				fmt.Println("Branch switching is only available with the 'branch' strategy.")
+			} else if err := switchBranch(cw, name); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			} else {
+				msgs := activeMessages(cw)
+				fmt.Printf("Switched to branch '%s' (%d messages).\n", name, len(msgs))
+				cw.Stats = statsFromToken(stats)
+				_ = saveSessionCW(sessionName, cw)
+			}
+			fmt.Println()
+			continue
+		case input == "/branches":
+			if getStrategy(cw) != strategyBranch {
+				fmt.Println("Branching is only available with the 'branch' strategy.")
+			} else {
+				active := cw.ActiveBranch
+				if active == "" {
+					active = "main"
+				}
+				for _, name := range listBranches(cw) {
+					marker := "  "
+					if name == active {
+						marker = "* "
+					}
+					count := len(cw.Messages)
+					if name != "main" {
+						for _, b := range cw.Branches {
+							if b.Name == name {
+								count = b.ForkIndex + len(b.Messages)
+								break
+							}
+						}
+					}
+					fmt.Printf("%s%s (%d messages)\n", marker, name, count)
+				}
+			}
+			fmt.Println()
+			continue
 		}
 
-		// Compress history BEFORE adding the new message so the current
-		// question doesn't get swallowed into the summary.
-		ci, compErr := maybeCompress(apiKey, cw, &stats)
+		// Pre-process context (compress for summary strategy, noop for others).
+		ci, compErr := maybeProcess(apiKey, cw, &stats)
 		if compErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: compression failed, continuing with full history: %v\n", compErr)
+			fmt.Fprintf(os.Stderr, "Warning: context processing failed, continuing with full history: %v\n", compErr)
 		} else if ci != nil {
-			cw.Messages = append(cw.Messages, message{
+			appendMessage(cw, message{
 				Role: "system",
 				Event: &messageEvent{
 					Type:         "compress",
@@ -234,8 +333,8 @@ func runChat(apiKey, openaiKey string, cfg config) {
 				ci.MessageCount, ci.SummaryLen, ci.TokensSaved)
 		}
 
-		cw.Messages = append(cw.Messages, message{Role: "user", Content: input})
-		compressed := buildCompressedMessages(cw)
+		appendMessage(cw, message{Role: "user", Content: input})
+		compressed := buildAPIMessages(cw)
 
 		fmt.Print("\nClaude: ")
 		tw := &cliTokenWriter{}
@@ -257,7 +356,16 @@ func runChat(apiKey, openaiKey string, cfg config) {
 		stats.Add(usage)
 		fmt.Printf("%s  %s\n\n", formatTokenUsage(usage), stats.FormatTotal())
 
-		cw.Messages = append(cw.Messages, message{Role: "assistant", Content: reply})
+		appendMessage(cw, message{Role: "assistant", Content: reply})
+
+		// Post-process: extract facts for facts strategy.
+		if getStrategy(cw) == strategyFacts {
+			if err := maybeExtractFacts(apiKey, cw, &stats); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: fact extraction failed: %v\n", err)
+			} else if len(cw.Facts) > 0 {
+				fmt.Printf("\033[2m[facts updated: %d entries]\033[0m\n", len(cw.Facts))
+			}
+		}
 
 		cw.Stats = statsFromToken(stats)
 		if err := saveSessionCW(sessionName, cw); err != nil {

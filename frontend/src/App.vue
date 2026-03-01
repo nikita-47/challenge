@@ -6,9 +6,13 @@ import ChatInfoPanel from '@/components/ChatInfoPanel.vue'
 import ChatWindow from '@/components/ChatWindow.vue'
 import ChatInput from '@/components/ChatInput.vue'
 import TokenBar from '@/components/TokenBar.vue'
+import BranchSelector from '@/components/BranchSelector.vue'
 import { Button } from '@/components/ui/button'
 import { useSessionsStore } from '@/stores/sessions'
+import { useChatStore } from '@/stores/chat'
 import { useUIStore } from '@/stores/ui'
+
+const chat = useChatStore()
 
 const sessionsStore = useSessionsStore()
 const ui = useUIStore()
@@ -41,6 +45,7 @@ onMounted(() => {
         >
           &#9776;
         </Button>
+        <BranchSelector v-if="chat.settings?.strategy === 'branch'" />
         <div class="flex-1" />
         <Button
           variant="ghost"

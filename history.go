@@ -17,6 +17,8 @@ type sessionSettings struct {
 	Temperature float64 `json:"temperature,omitempty"`
 	MaxTokens   int     `json:"max_tokens,omitempty"`
 	System      string  `json:"system,omitempty"`
+	Strategy    string  `json:"strategy,omitempty"`    // "summary"|"window"|"facts"|"branch"
+	WindowSize  int     `json:"window_size,omitempty"` // N for window/facts strategies (default 20)
 }
 
 type sessionStats struct {
@@ -48,11 +50,14 @@ func (ss *sessionStats) toTokenStats() tokenStats {
 }
 
 type sessionFile struct {
-	SavedAt  time.Time        `json:"saved_at"`
-	Messages []message        `json:"messages"`
-	Summary  string           `json:"summary,omitempty"`
-	Settings *sessionSettings `json:"settings,omitempty"`
-	Stats    *sessionStats    `json:"stats,omitempty"`
+	SavedAt      time.Time         `json:"saved_at"`
+	Messages     []message         `json:"messages"`
+	Summary      string            `json:"summary,omitempty"`
+	Settings     *sessionSettings  `json:"settings,omitempty"`
+	Stats        *sessionStats     `json:"stats,omitempty"`
+	Facts        map[string]string `json:"facts,omitempty"`
+	Branches     []branch          `json:"branches,omitempty"`
+	ActiveBranch string            `json:"active_branch,omitempty"`
 }
 
 func sessionPath(name string) string {
@@ -67,11 +72,14 @@ func saveSessionCW(name string, cw *contextWindow) error {
 		return err
 	}
 	data, err := json.MarshalIndent(sessionFile{
-		SavedAt:  time.Now().UTC(),
-		Messages: cw.Messages,
-		Summary:  cw.Summary,
-		Settings: cw.Settings,
-		Stats:    cw.Stats,
+		SavedAt:      time.Now().UTC(),
+		Messages:     cw.Messages,
+		Summary:      cw.Summary,
+		Settings:     cw.Settings,
+		Stats:        cw.Stats,
+		Facts:        cw.Facts,
+		Branches:     cw.Branches,
+		ActiveBranch: cw.ActiveBranch,
 	}, "", "  ")
 	if err != nil {
 		return err
@@ -92,10 +100,13 @@ func loadSessionCW(name string) (*contextWindow, error) {
 		return nil, err
 	}
 	return &contextWindow{
-		Messages: sf.Messages,
-		Summary:  sf.Summary,
-		Settings: sf.Settings,
-		Stats:    sf.Stats,
+		Messages:     sf.Messages,
+		Summary:      sf.Summary,
+		Settings:     sf.Settings,
+		Stats:        sf.Stats,
+		Facts:        sf.Facts,
+		Branches:     sf.Branches,
+		ActiveBranch: sf.ActiveBranch,
 	}, nil
 }
 
