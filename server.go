@@ -109,6 +109,7 @@ func sseWrite(w http.ResponseWriter, data any) {
 type chatRequest struct {
 	Message     string  `json:"message"`
 	Session     string  `json:"session"`
+	Model       string  `json:"model"`
 	System      string  `json:"system"`
 	MaxTokens   int     `json:"maxTokens"`
 	Temperature float64 `json:"temperature"`
@@ -122,6 +123,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	}
 
 	cfg := config{
+		model:       req.Model,
 		maxTokens:   req.MaxTokens,
 		temperature: req.Temperature,
 		system:      req.System,
@@ -175,6 +177,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	cw.Messages = append(cw.Messages, message{Role: "user", Content: req.Message})
 	cw.Messages = append(cw.Messages, message{Role: "assistant", Content: result})
 	cw.Settings = &sessionSettings{
+		Model:       cfg.model,
 		Temperature: cfg.temperature,
 		MaxTokens:   cfg.maxTokens,
 		System:      cfg.system,

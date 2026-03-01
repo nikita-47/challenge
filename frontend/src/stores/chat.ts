@@ -63,6 +63,7 @@ export const useChatStore = defineStore('chat', () => {
       message: text,
       session: currentSession.value,
       ...(settings.value && {
+        model: settings.value.model,
         system: settings.value.system,
         maxTokens: settings.value.maxTokens,
         temperature: settings.value.temperature,
