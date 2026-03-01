@@ -68,8 +68,6 @@ func cliAgentEmit(ev AgentEvent) {
 func runChat(apiKey, openaiKey string, cfg config) {
 	scanner := bufio.NewScanner(os.Stdin)
 	sessionName := cfg.session
-	var stats tokenStats
-
 	cw := &contextWindow{}
 	loaded, err := loadSessionCW(sessionName)
 	if err != nil {
@@ -78,6 +76,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 	if loaded != nil {
 		cw = loaded
 	}
+	stats := cw.Stats.toTokenStats()
 	if len(cw.Messages) > 0 {
 		name := sessionName
 		if name == "" {
@@ -167,6 +166,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 				cw.Messages = append(cw.Messages, message{Role: "user", Content: task})
 				cw.Messages = append(cw.Messages, message{Role: "assistant", Content: result})
 
+				cw.Stats = statsFromToken(stats)
 				if err := saveSessionCW(sessionName, cw); err != nil {
 					fmt.Fprintf(os.Stderr, "Warning: failed to auto-save session: %v\n", err)
 				}
@@ -182,6 +182,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			if saveName == "" {
 				saveName = sessionName
 			}
+			cw.Stats = statsFromToken(stats)
 			if err := saveSessionCW(saveName, cw); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: failed to save session: %v\n", err)
 			} else {
@@ -203,7 +204,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			} else {
 				cw = loaded
 				sessionName = loadName
-				stats = tokenStats{} // reset stats for loaded session
+				stats = cw.Stats.toTokenStats()
 				fmt.Printf("Loaded session '%s' (%d messages", loadName, len(cw.Messages))
 				if cw.Summary != "" {
 					fmt.Printf(", has summary")
@@ -258,6 +259,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 
 		cw.Messages = append(cw.Messages, message{Role: "assistant", Content: reply})
 
+		cw.Stats = statsFromToken(stats)
 		if err := saveSessionCW(sessionName, cw); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to auto-save session: %v\n", err)
 		}

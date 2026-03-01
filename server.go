@@ -141,8 +141,10 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 		sseWrite(w, ev)
 	}
 
+	// Restore cumulative stats from session (or start fresh).
+	stats := cw.Stats.toTokenStats()
+
 	// Compress history BEFORE adding the new message.
-	var stats tokenStats
 	ci, compErr := maybeCompress(apiKey, cw, &stats)
 	if compErr != nil {
 		// Non-fatal: continue with full history.
@@ -173,6 +175,11 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 		return
 	}
 
+	// Accumulate agent stats into session lifetime stats.
+	stats.TotalInput += agent.Stats.TotalInput
+	stats.TotalOutput += agent.Stats.TotalOutput
+	stats.Exchanges += agent.Stats.Exchanges
+
 	// Save to session (append to raw Messages, not compressed).
 	cw.Messages = append(cw.Messages, message{Role: "user", Content: req.Message})
 	cw.Messages = append(cw.Messages, message{Role: "assistant", Content: result})
@@ -182,6 +189,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 		MaxTokens:   cfg.maxTokens,
 		System:      cfg.system,
 	}
+	cw.Stats = statsFromToken(stats)
 	_ = saveSessionCW(req.Session, cw)
 }
 
@@ -214,6 +222,7 @@ func handleGetSession(w http.ResponseWriter, r *http.Request, name string) {
 		"messages": cw.Messages,
 		"summary":  cw.Summary,
 		"settings": cw.Settings,
+		"stats":    cw.Stats,
 	})
 }
 

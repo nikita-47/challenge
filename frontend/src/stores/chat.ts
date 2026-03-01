@@ -12,6 +12,8 @@ export const useChatStore = defineStore('chat', () => {
   const exchanges = ref(0)
   const error = ref<string | null>(null)
   const settings = ref<ChatSettings | null>(null)
+  const hasSummary = ref(false)
+  const compressionCount = ref(0)
 
   let abortController: AbortController | null = null
 
@@ -30,6 +32,17 @@ export const useChatStore = defineStore('chat', () => {
     exchanges.value = 0
     error.value = null
     settings.value = null
+    hasSummary.value = false
+    compressionCount.value = 0
+    tokensSaved.value = 0
+  }
+
+  const tokensSaved = ref(0)
+
+  function setStats(stats: { total_input: number; total_output: number; exchanges: number; tokens_saved: number }) {
+    totalUsage.value = { input: stats.total_input, output: stats.total_output }
+    exchanges.value = stats.exchanges
+    tokensSaved.value = stats.tokens_saved
   }
 
   function setMessages(msgs: ChatMessage[]) {
@@ -140,6 +153,8 @@ export const useChatStore = defineStore('chat', () => {
             break
 
           case 'compress': {
+            hasSummary.value = true
+            compressionCount.value++
             const compressMsg: ChatMessage = {
               role: 'system',
               content: '',
@@ -189,6 +204,10 @@ export const useChatStore = defineStore('chat', () => {
     clearMessages,
     setMessages,
     setSettings,
+    setStats,
     stopStreaming,
+    hasSummary,
+    compressionCount,
+    tokensSaved,
   }
 })

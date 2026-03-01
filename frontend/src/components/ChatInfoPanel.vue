@@ -51,10 +51,6 @@ const displayConfig = computed(() => {
             </span>
           </div>
           <div class="flex justify-between">
-            <span class="text-muted-foreground">Messages</span>
-            <span class="text-foreground">{{ chat.messages.length }}</span>
-          </div>
-          <div class="flex justify-between">
             <span class="text-muted-foreground">Exchanges</span>
             <span class="text-foreground">{{ chat.exchanges }}</span>
           </div>
@@ -69,6 +65,18 @@ const displayConfig = computed(() => {
           <div class="flex justify-between">
             <span class="text-muted-foreground">Cost</span>
             <span class="text-foreground">${{ chat.totalCost.toFixed(6) }}</span>
+          </div>
+          <div v-if="chat.hasSummary" class="flex justify-between">
+            <span class="text-muted-foreground">Compressed</span>
+            <span class="text-foreground">
+              <template v-if="chat.compressionCount > 0">
+                {{ chat.compressionCount }}x
+              </template>
+              <template v-else>Yes</template>
+              <span v-if="chat.tokensSaved > 0" class="text-muted-foreground">
+                (~{{ chat.tokensSaved.toLocaleString() }} saved)
+              </span>
+            </span>
           </div>
         </div>
 

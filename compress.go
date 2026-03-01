@@ -16,6 +16,7 @@ type contextWindow struct {
 	Summary  string           // accumulated summary of all previous messages (empty = none)
 	Messages []message        // current unsummarized messages (≤ compressThreshold)
 	Settings *sessionSettings // chat settings (model, temperature, maxTokens, system)
+	Stats    *sessionStats    // cumulative token stats for the session
 }
 
 // compressInfo holds details about a compression event.

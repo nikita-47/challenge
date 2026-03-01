@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { fetchSessions, fetchSession, deleteSessionAPI, renameSessionAPI } from '@/lib/api'
 import { useChatStore } from './chat'
-import type { ChatMessage, ChatSettings, SystemEvent } from '@/lib/types'
+import type { ChatMessage, ChatSettings } from '@/lib/types'
 
 export const useSessionsStore = defineStore('sessions', () => {
   const sessions = ref<string[]>([])
@@ -51,6 +51,11 @@ export const useSessionsStore = defineStore('sessions', () => {
       } else {
         chat.setSettings(null)
       }
+      if (data.stats) {
+        chat.setStats(data.stats)
+      }
+      chat.hasSummary = !!data.summary
+      chat.compressionCount = msgs.filter((m: ChatMessage) => m.event?.type === 'compress').length
     } catch (e) {
       console.error('Failed to load session:', e)
     }

@@ -19,11 +19,40 @@ type sessionSettings struct {
 	System      string  `json:"system,omitempty"`
 }
 
+type sessionStats struct {
+	TotalInput  int `json:"total_input"`
+	TotalOutput int `json:"total_output"`
+	Exchanges   int `json:"exchanges"`
+	TokensSaved int `json:"tokens_saved"`
+}
+
+func statsFromToken(ts tokenStats) *sessionStats {
+	return &sessionStats{
+		TotalInput:  ts.TotalInput,
+		TotalOutput: ts.TotalOutput,
+		Exchanges:   ts.Exchanges,
+		TokensSaved: ts.TokensSaved,
+	}
+}
+
+func (ss *sessionStats) toTokenStats() tokenStats {
+	if ss == nil {
+		return tokenStats{}
+	}
+	return tokenStats{
+		TotalInput:  ss.TotalInput,
+		TotalOutput: ss.TotalOutput,
+		Exchanges:   ss.Exchanges,
+		TokensSaved: ss.TokensSaved,
+	}
+}
+
 type sessionFile struct {
 	SavedAt  time.Time        `json:"saved_at"`
 	Messages []message        `json:"messages"`
 	Summary  string           `json:"summary,omitempty"`
 	Settings *sessionSettings `json:"settings,omitempty"`
+	Stats    *sessionStats    `json:"stats,omitempty"`
 }
 
 func sessionPath(name string) string {
@@ -42,6 +71,7 @@ func saveSessionCW(name string, cw *contextWindow) error {
 		Messages: cw.Messages,
 		Summary:  cw.Summary,
 		Settings: cw.Settings,
+		Stats:    cw.Stats,
 	}, "", "  ")
 	if err != nil {
 		return err
@@ -65,6 +95,7 @@ func loadSessionCW(name string) (*contextWindow, error) {
 		Messages: sf.Messages,
 		Summary:  sf.Summary,
 		Settings: sf.Settings,
+		Stats:    sf.Stats,
 	}, nil
 }
 
