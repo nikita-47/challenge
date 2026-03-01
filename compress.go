@@ -9,12 +9,16 @@ import (
 	"strings"
 )
 
-const compressThreshold = 10 // compress when this many messages accumulate
+// compressThreshold returns the number of messages before compression kicks in.
+// Uses the shared windowSize setting so all strategies share the same N.
+func compressThreshold(cw *contextWindow) int {
+	return getWindowSize(cw)
+}
 
 // contextWindow tracks current messages and a single rolling summary.
 type contextWindow struct {
 	Summary      string            // accumulated summary of all previous messages (empty = none)
-	Messages     []message         // current unsummarized messages (≤ compressThreshold)
+	Messages     []message         // current unsummarized messages (≤ windowSize)
 	Settings     *sessionSettings  // chat settings (model, temperature, maxTokens, system)
 	Stats        *sessionStats     // cumulative token stats for the session
 	Facts        map[string]string // key-value memory for facts strategy
@@ -33,7 +37,7 @@ type compressInfo struct {
 // Call BEFORE appending the new user message so the current question isn't swallowed.
 // Returns non-nil compressInfo if compression was performed.
 func maybeCompress(apiKey string, cw *contextWindow, stats *tokenStats) (*compressInfo, error) {
-	if len(cw.Messages) < compressThreshold {
+	if len(cw.Messages) < compressThreshold(cw) {
 		return nil, nil
 	}
 

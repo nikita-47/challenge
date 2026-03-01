@@ -149,9 +149,9 @@ watch(() => chat.messages.length, () => {
             <span class="text-muted-foreground">Type</span>
             <span class="text-foreground capitalize">{{ chat.settings.strategy }}</span>
           </div>
-          <div v-if="chat.settings.strategy === 'window' || chat.settings.strategy === 'facts'" class="flex justify-between">
+          <div v-if="chat.settings.strategy !== 'branch'" class="flex justify-between">
             <span class="text-muted-foreground">Window size</span>
-            <span class="text-foreground">{{ chat.settings.windowSize ?? 20 }}</span>
+            <span class="text-foreground">{{ chat.settings.windowSize ?? 10 }}</span>
           </div>
           <div v-if="chat.settings.strategy === 'facts'" class="flex justify-between">
             <span class="text-muted-foreground">Facts</span>

@@ -48,7 +48,7 @@ const temperature = ref([0.7])
 const maxTokens = ref(1024)
 const system = ref('')
 const strategy = ref<ContextStrategy>('summary')
-const windowSize = ref(20)
+const windowSize = ref(10)
 
 watch(() => ui.newChatDialogOpen, (open) => {
   if (open) {
@@ -59,7 +59,7 @@ watch(() => ui.newChatDialogOpen, (open) => {
     maxTokens.value = ui.config?.maxTokens ?? 1024
     system.value = ui.config?.system ?? ''
     strategy.value = 'summary'
-    windowSize.value = 20
+    windowSize.value = 10
   }
 })
 
@@ -70,7 +70,7 @@ function confirm() {
     maxTokens: maxTokens.value,
     system: system.value,
     strategy: strategy.value,
-    windowSize: strategy.value === 'window' || strategy.value === 'facts' ? windowSize.value : undefined,
+    windowSize: strategy.value !== 'branch' ? windowSize.value : undefined,
   }
   sessions.newChat(chatName.value || undefined, s)
   ui.newChatDialogOpen = false
@@ -123,7 +123,7 @@ function confirm() {
           </Select>
         </div>
 
-        <div v-if="strategy === 'window' || strategy === 'facts'" class="space-y-2">
+        <div v-if="strategy === 'summary' || strategy === 'window' || strategy === 'facts'" class="space-y-2">
           <Label for="window-size">Window size (messages)</Label>
           <Input
             id="window-size"

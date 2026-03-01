@@ -140,7 +140,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			continue
 		case input == "/compress":
 			if cw.Summary == "" {
-				fmt.Printf("No summary yet (compression triggers at %d messages).\n", compressThreshold)
+				fmt.Printf("No summary yet (compression triggers at %d messages).\n", compressThreshold(cw))
 			} else {
 				fmt.Printf("Current messages: %d | Summary:\n\n%s\n", len(cw.Messages), cw.Summary)
 			}

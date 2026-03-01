@@ -88,10 +88,10 @@ func appendMessage(cw *contextWindow, msg message) {
 	cw.Messages = append(cw.Messages, msg)
 }
 
-// getWindowSize returns the window size from settings, defaulting to 20.
+// getWindowSize returns the window size from settings, defaulting to 10.
 func getWindowSize(cw *contextWindow) int {
 	if cw.Settings != nil && cw.Settings.WindowSize > 0 {
 		return cw.Settings.WindowSize
 	}
-	return 20
+	return 10
 }
