@@ -41,6 +41,16 @@ export const useSessionsStore = defineStore('sessions', () => {
       })
       chat.setMessages(msgs)
       chat.currentSession = name
+      if (data.settings) {
+        chat.setSettings({
+          model: data.settings.model ?? '',
+          temperature: data.settings.temperature ?? 0.7,
+          maxTokens: data.settings.max_tokens ?? data.settings.maxTokens ?? 1024,
+          system: data.settings.system ?? '',
+        })
+      } else {
+        chat.setSettings(null)
+      }
     } catch (e) {
       console.error('Failed to load session:', e)
     }

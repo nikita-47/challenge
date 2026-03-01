@@ -174,6 +174,11 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	// Save to session (append to raw Messages, not compressed).
 	cw.Messages = append(cw.Messages, message{Role: "user", Content: req.Message})
 	cw.Messages = append(cw.Messages, message{Role: "assistant", Content: result})
+	cw.Settings = &sessionSettings{
+		Temperature: cfg.temperature,
+		MaxTokens:   cfg.maxTokens,
+		System:      cfg.system,
+	}
 	_ = saveSessionCW(req.Session, cw)
 }
 
@@ -205,6 +210,7 @@ func handleGetSession(w http.ResponseWriter, r *http.Request, name string) {
 	json.NewEncoder(w).Encode(map[string]any{
 		"messages": cw.Messages,
 		"summary":  cw.Summary,
+		"settings": cw.Settings,
 	})
 }
 

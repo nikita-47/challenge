@@ -12,10 +12,18 @@ import (
 
 const historyDir = ".chat_history"
 
+type sessionSettings struct {
+	Model       string  `json:"model,omitempty"`
+	Temperature float64 `json:"temperature,omitempty"`
+	MaxTokens   int     `json:"max_tokens,omitempty"`
+	System      string  `json:"system,omitempty"`
+}
+
 type sessionFile struct {
-	SavedAt  time.Time `json:"saved_at"`
-	Messages []message `json:"messages"`
-	Summary  string    `json:"summary,omitempty"`
+	SavedAt  time.Time        `json:"saved_at"`
+	Messages []message        `json:"messages"`
+	Summary  string           `json:"summary,omitempty"`
+	Settings *sessionSettings `json:"settings,omitempty"`
 }
 
 func sessionPath(name string) string {
@@ -33,6 +41,7 @@ func saveSessionCW(name string, cw *contextWindow) error {
 		SavedAt:  time.Now().UTC(),
 		Messages: cw.Messages,
 		Summary:  cw.Summary,
+		Settings: cw.Settings,
 	}, "", "  ")
 	if err != nil {
 		return err
@@ -55,6 +64,7 @@ func loadSessionCW(name string) (*contextWindow, error) {
 	return &contextWindow{
 		Messages: sf.Messages,
 		Summary:  sf.Summary,
+		Settings: sf.Settings,
 	}, nil
 }
 

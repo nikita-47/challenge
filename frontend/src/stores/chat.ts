@@ -19,7 +19,7 @@ export const useChatStore = defineStore('chat', () => {
     return totalUsage.value.input * 3.0 / 1e6 + totalUsage.value.output * 15.0 / 1e6
   })
 
-  function setSettings(s: ChatSettings) {
+  function setSettings(s: ChatSettings | null) {
     settings.value = s
   }
 
