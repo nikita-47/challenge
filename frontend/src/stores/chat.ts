@@ -131,13 +131,6 @@ export const useChatStore = defineStore('chat', () => {
 
           case 'done':
             msg.isStreaming = false
-            if (event.stats) {
-              totalUsage.value = {
-                input: event.stats.TotalInput,
-                output: event.stats.TotalOutput,
-              }
-              exchanges.value = event.stats.Exchanges
-            }
             break
 
           case 'error':
@@ -145,9 +138,24 @@ export const useChatStore = defineStore('chat', () => {
             msg.isStreaming = false
             break
 
-          case 'compress':
-            // Could show compression info
+          case 'compress': {
+            const compressMsg: ChatMessage = {
+              role: 'system',
+              content: '',
+              event: {
+                type: 'compress',
+                messageCount: event.messageCount,
+                tokensSaved: event.tokensSaved,
+              },
+            }
+            const insertIndex = messages.value.length - 2
+            if (insertIndex >= 0) {
+              messages.value.splice(insertIndex, 0, compressMsg)
+            } else {
+              messages.value.unshift(compressMsg)
+            }
             break
+          }
         }
       }, abortController.signal)
     } catch (e) {

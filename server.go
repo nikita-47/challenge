@@ -135,18 +135,43 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 
 	sseSetup(w)
 
-	agent := newAgent(apiKey, cfg)
 	emit := func(ev AgentEvent) {
 		sseWrite(w, ev)
 	}
 
-	result, err := agent.Run(req.Message, cw.Messages, emit)
+	// Compress history BEFORE adding the new message.
+	var stats tokenStats
+	ci, compErr := maybeCompress(apiKey, cw, &stats)
+	if compErr != nil {
+		// Non-fatal: continue with full history.
+	} else if ci != nil {
+		cw.Messages = append(cw.Messages, message{
+			Role: "system",
+			Event: &messageEvent{
+				Type:         "compress",
+				MessageCount: ci.MessageCount,
+				SummaryLen:   ci.SummaryLen,
+				TokensSaved:  ci.TokensSaved,
+			},
+		})
+		sseWrite(w, map[string]any{
+			"type":         "compress",
+			"messageCount": ci.MessageCount,
+			"summaryLen":   ci.SummaryLen,
+			"tokensSaved":  ci.TokensSaved,
+		})
+	}
+
+	compressed := buildCompressedMessages(cw)
+
+	agent := newAgent(apiKey, cfg)
+	result, err := agent.Run(req.Message, compressed, emit)
 	if err != nil {
 		sseWrite(w, map[string]any{"type": "error", "message": err.Error()})
 		return
 	}
 
-	// Save to session.
+	// Save to session (append to raw Messages, not compressed).
 	cw.Messages = append(cw.Messages, message{Role: "user", Content: req.Message})
 	cw.Messages = append(cw.Messages, message{Role: "assistant", Content: result})
 	_ = saveSessionCW(req.Session, cw)

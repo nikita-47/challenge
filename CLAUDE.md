@@ -101,7 +101,8 @@ go run . --server
 - **IO decoupling**: `readStream()` and `Agent.Run()` accept callbacks (`onToken func(string)` / `emit func(AgentEvent)`), CLI and HTTP use different implementations
 - **`.env` loading**: hand-rolled parser, no third-party dotenv library
 - **Model**: claude-sonnet-4-5-20250929
-- **Conversation history**: last 10 messages sent as-is, older messages compressed via summary before new user message is appended; auto-saved to `.chat_history/` as JSON with summaries
+- **Conversation history**: last 10 messages sent as-is, older messages compressed via summary before new user message is appended; auto-saved to `.chat_history/` as JSON with summaries. Compression works in both CLI and HTTP endpoints.
+- **System events**: stored inline in messages array as `role: "system"` with `event` field (`messageEvent` in Go, `SystemEvent` in TS). Used for compression notifications; extensible for future event types. Filtered out before sending to Claude API via `filterAPIMessages()`.
 - **Streaming**: uses SSE (`stream: true`); CLI renders via `cliTokenWriter`, HTTP sends SSE events to browser
 - **Format injection**: `--format` value is appended to system prompt as `"Always respond in this format: <value>"`
 - **HTTP API**: POST `/api/chat` (SSE stream, unified agent endpoint with tools), GET/DELETE `/api/sessions[/:name]`

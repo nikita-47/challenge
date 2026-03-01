@@ -5,11 +5,19 @@ export interface ChatSettings {
   system: string
 }
 
+export interface SystemEvent {
+  type: string
+  messageCount?: number
+  summaryLen?: number
+  tokensSaved?: number
+}
+
 export interface ChatMessage {
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'system'
   content: string
   toolCalls?: ToolCall[]
   isStreaming?: boolean
+  event?: SystemEvent
 }
 
 export interface ToolCall {

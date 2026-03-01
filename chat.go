@@ -220,6 +220,15 @@ func runChat(apiKey, openaiKey string, cfg config) {
 		if compErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: compression failed, continuing with full history: %v\n", compErr)
 		} else if ci != nil {
+			cw.Messages = append(cw.Messages, message{
+				Role: "system",
+				Event: &messageEvent{
+					Type:         "compress",
+					MessageCount: ci.MessageCount,
+					SummaryLen:   ci.SummaryLen,
+					TokensSaved:  ci.TokensSaved,
+				},
+			})
 			fmt.Printf("\033[2m[compressed %d messages → summary (%d chars) | saved ~%d tokens]\033[0m\n",
 				ci.MessageCount, ci.SummaryLen, ci.TokensSaved)
 		}

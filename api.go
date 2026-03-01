@@ -11,9 +11,17 @@ import (
 	"strings"
 )
 
+type messageEvent struct {
+	Type         string `json:"type"`
+	MessageCount int    `json:"message_count,omitempty"`
+	SummaryLen   int    `json:"summary_len,omitempty"`
+	TokensSaved  int    `json:"tokens_saved,omitempty"`
+}
+
 type message struct {
-	Role    string `json:"role"`
-	Content any    `json:"content"`
+	Role    string        `json:"role"`
+	Content any           `json:"content"`
+	Event   *messageEvent `json:"event,omitempty"`
 }
 
 // UnmarshalJSON handles both string and []contentBlock content for backward compatibility.
@@ -21,11 +29,19 @@ func (m *message) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Role    string          `json:"role"`
 		Content json.RawMessage `json:"content"`
+		Event   *messageEvent   `json:"event,omitempty"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	m.Role = raw.Role
+	m.Event = raw.Event
+
+	// System events have no meaningful content.
+	if m.Role == "system" {
+		m.Content = ""
+		return nil
+	}
 
 	// Try string first (old sessions).
 	var s string

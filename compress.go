@@ -64,7 +64,21 @@ func maybeCompress(apiKey string, cw *contextWindow, stats *tokenStats) (*compre
 
 // buildCompressedMessages returns the message slice to send to the API,
 // prepending summary+ack if a summary exists.
+// filterAPIMessages returns only user/assistant messages suitable for the Claude API.
+func filterAPIMessages(msgs []message) []message {
+	result := make([]message, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Role == "system" {
+			continue
+		}
+		result = append(result, m)
+	}
+	return result
+}
+
 func buildCompressedMessages(cw *contextWindow) []message {
+	apiMsgs := filterAPIMessages(cw.Messages)
+
 	if cw.Summary != "" {
 		summaryMsg := message{
 			Role:    "user",
@@ -74,13 +88,13 @@ func buildCompressedMessages(cw *contextWindow) []message {
 			Role:    "assistant",
 			Content: "Understood, I have the context from our previous conversation.",
 		}
-		result := make([]message, 0, 2+len(cw.Messages))
+		result := make([]message, 0, 2+len(apiMsgs))
 		result = append(result, summaryMsg, ackMsg)
-		result = append(result, cw.Messages...)
+		result = append(result, apiMsgs...)
 		return result
 	}
 
-	return cw.Messages
+	return apiMsgs
 }
 
 // summarize calls Claude API (non-streaming) to produce a concise summary

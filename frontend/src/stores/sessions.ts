@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { fetchSessions, fetchSession, deleteSessionAPI, renameSessionAPI } from '@/lib/api'
 import { useChatStore } from './chat'
-import type { ChatMessage, ChatSettings } from '@/lib/types'
+import type { ChatMessage, ChatSettings, SystemEvent } from '@/lib/types'
 
 export const useSessionsStore = defineStore('sessions', () => {
   const sessions = ref<string[]>([])
@@ -23,10 +23,22 @@ export const useSessionsStore = defineStore('sessions', () => {
     const chat = useChatStore()
     try {
       const data = await fetchSession(name)
-      const msgs: ChatMessage[] = (data.messages ?? []).map((m: { role: string; content: unknown }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-      }))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msgs: ChatMessage[] = (data.messages ?? []).map((m: any) => {
+        const msg: ChatMessage = {
+          role: m.role as ChatMessage['role'],
+          content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+        }
+        if (m.event) {
+          msg.event = {
+            type: m.event.type,
+            messageCount: m.event.message_count ?? m.event.messageCount,
+            summaryLen: m.event.summary_len ?? m.event.summaryLen,
+            tokensSaved: m.event.tokens_saved ?? m.event.tokensSaved,
+          }
+        }
+        return msg
+      })
       chat.setMessages(msgs)
       chat.currentSession = name
     } catch (e) {
