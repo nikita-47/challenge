@@ -123,26 +123,27 @@ go run . --server
 
 Dev servers should be running throughout the session. Start once at the beginning, restart Go only after `.go` changes.
 
-### Check & start servers
-Before starting a server, check if the port is already in use:
+### Dev servers (`dev.sh`)
 ```bash
-lsof -i :8080 -t  # empty = not running, PID = already running
-lsof -i :5173 -t  # same for Vite (may use 5174 if 5173 busy)
+./dev.sh start        # запустить Go + Vite
+./dev.sh stop         # остановить всё (Go + Vite + Playwright)
+./dev.sh restart-go   # после изменений .go файлов
+./dev.sh status       # проверить что запущено
 ```
 
-Start only what's not running:
+Отдельные команды: `start-go`, `stop-go`, `start-vite`, `stop-vite`, `stop-playwright`.
+
+- **Go code changed** → `./dev.sh restart-go`
+- **Frontend code changed** → ничего, Vite HMR подхватит
+- **Vite dev server** → не перезапускать, только если изменился config
+
+### Browser testing mode (local LLM)
+Для UI-тестирования использовать локальную LLM вместо Claude API:
 ```bash
-# Go backend (run in background)
-go run . --server --port 8080
-
-# Vite dev server with HMR (run in background, only once per session)
-cd frontend && npm run dev
+./dev.sh start-test   # LM Studio + Go (с local LLM) + Vite
+./dev.sh stop-test    # остановить всё
 ```
-
-### When to restart
-- **Go code changed** → kill Go server (`lsof -i :8080 -t | xargs kill`), rebuild and restart
-- **Frontend code changed** → do nothing, Vite HMR picks it up automatically
-- **Vite dev server** → never restart unless config changed (vite.config.ts, tailwind, etc.)
+Модель: qwen2.5-0.5b-instruct-mlx (0.5B, мгновенные ответы, 0 токенов).
 
 ### Build & type check
 Run before browser testing:
@@ -165,3 +166,4 @@ After implementing features, **always verify in browser** before reporting done:
 - Before starting a new day's task, read `TASKS.md` to understand what was built before
 - Every new feature/tool must be accessible both from interactive chat (`/command`) and from CLI (`--flag`) so it can be used non-interactively
 - When testing context strategies, use the cheapest model (`claude-3-5-haiku-20241022`) and window size N=3 to minimize token costs
+- Не использовать Python — все задачи решаются Go, bash или Node

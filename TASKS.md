@@ -235,6 +235,23 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 11 — Local LLM for UI Testing ✅
+
+**Assignment:** Add LM Studio integration to `dev.sh` for fast, free UI testing with a local LLM instead of Claude API. Add `start-test`/`stop-test` commands that spin up LM Studio + Go (with `--base-url`) + Vite in one step.
+
+**What was built on top of Day 10:**
+- `dev.sh` — new commands: `start-lms`, `stop-lms`, `start-test`, `stop-test`; LM Studio status in `./dev.sh status`
+- LM Studio integration: auto-start server on port 1234, auto-load `qwen2.5-0.5b-instruct-mlx` model
+- `start-test` launches Go server with `--base-url http://localhost:1234 --model qwen2.5-0.5b-instruct-mlx`
+- `CLAUDE.md` — added "Browser testing mode (local LLM)" section with `start-test`/`stop-test` docs
+- `.claude/settings.json` — added `lms` CLI permission
+
+**Bugfix:** `lms server status` writes to stderr, not stdout — fixed `2>/dev/null` → `2>&1` for grep. Also `"not running"` matched `grep "running"` — narrowed to `grep "is running"`.
+
+**Key code:** `start_lms()`, `stop_lms()`, `start_go_test()` in `dev.sh`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

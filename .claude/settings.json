@@ -15,6 +15,8 @@
       "Bash(mkdir*)",
       "Bash(lsof*)",
       "Bash(kill*)",
+      "Bash(./dev.sh *)",
+      "Bash(~/.lmstudio/bin/lms *)",
       "Bash(sleep*)",
       "Bash(cat /private/tmp/*)",
       "Bash(git add*)",
