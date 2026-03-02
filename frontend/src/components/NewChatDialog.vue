@@ -79,10 +79,10 @@ function confirm() {
 
 <template>
   <Dialog v-model:open="ui.newChatDialogOpen">
-    <DialogContent class="sm:max-w-md">
+    <DialogContent class="sm:max-w-md border-primary/20 bg-card">
       <DialogHeader>
-        <DialogTitle>New Chat</DialogTitle>
-        <DialogDescription>Configure settings for the new chat session.</DialogDescription>
+        <DialogTitle class="text-primary font-mono">// new_chat</DialogTitle>
+        <DialogDescription class="text-muted-foreground">Initialize new session with parameters.</DialogDescription>
       </DialogHeader>
 
       <div class="space-y-4 py-2">
@@ -168,8 +168,8 @@ function confirm() {
       </div>
 
       <DialogFooter>
-        <Button variant="outline" @click="ui.newChatDialogOpen = false">Cancel</Button>
-        <Button @click="confirm">Create</Button>
+        <Button variant="outline" @click="ui.newChatDialogOpen = false">abort</Button>
+        <Button @click="confirm">init</Button>
       </DialogFooter>
     </DialogContent>
   </Dialog>

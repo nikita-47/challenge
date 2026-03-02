@@ -24,7 +24,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-screen w-screen overflow-hidden">
+  <div class="flex h-screen w-screen overflow-hidden bg-background">
     <!-- Left sidebar -->
     <SessionPanel
       v-if="ui.leftSidebarOpen"
@@ -35,11 +35,11 @@ onMounted(() => {
     <!-- Main area -->
     <div class="flex flex-1 flex-col min-w-0">
       <!-- Toolbar -->
-      <div class="flex items-center gap-1 px-2 py-1 border-b border-border bg-background">
+      <div class="flex items-center gap-1 px-2 py-1 border-b border-primary/20 bg-card">
         <Button
           variant="ghost"
           size="icon"
-          class="h-7 w-7"
+          class="h-7 w-7 text-primary"
           @click="ui.toggleLeftSidebar()"
           title="Toggle sessions"
         >
@@ -50,7 +50,7 @@ onMounted(() => {
         <Button
           variant="ghost"
           size="icon"
-          class="h-7 w-7"
+          class="h-7 w-7 text-muted-foreground"
           @click="ui.toggleRightSidebar()"
           title="Toggle chat info"
         >

@@ -8,19 +8,25 @@ const chat = useChatStore()
 <template>
   <div
     v-if="chat.exchanges > 0"
-    class="flex items-center gap-2 px-4 py-1.5 border-t border-border bg-background"
+    class="flex items-center gap-1 px-4 py-1 border-t border-primary/20 bg-card text-xs font-mono"
   >
-    <Badge variant="secondary">
-      {{ chat.totalUsage.input.toLocaleString() }} in / {{ chat.totalUsage.output.toLocaleString() }} out
+    <Badge variant="default">
+      {{ chat.totalUsage.input.toLocaleString() }} in
     </Badge>
-    <Badge variant="secondary">
-      {{ chat.exchanges }} exchange{{ chat.exchanges !== 1 ? 's' : '' }}
+    <span class="text-muted-foreground">|</span>
+    <Badge variant="default">
+      {{ chat.totalUsage.output.toLocaleString() }} out
     </Badge>
+    <span class="text-muted-foreground">|</span>
+    <Badge variant="secondary">
+      {{ chat.exchanges }}x
+    </Badge>
+    <span class="text-muted-foreground">|</span>
     <Badge variant="secondary">
       ${{ chat.totalCost.toFixed(6) }}
     </Badge>
     <span class="ml-auto text-xs text-muted-foreground">
-      Session: {{ chat.currentSession }}
+      {{ chat.currentSession }}
     </span>
   </div>
 </template>

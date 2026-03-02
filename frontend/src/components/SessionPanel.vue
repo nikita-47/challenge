@@ -51,44 +51,44 @@ function cancelEdit() {
 </script>
 
 <template>
-  <aside class="flex flex-col border-r border-border bg-muted h-full">
-    <div class="p-3 border-b border-border flex items-center justify-between">
-      <h2 class="text-sm font-semibold text-foreground">Sessions</h2>
+  <aside class="flex flex-col border-r border-primary/20 bg-card h-full">
+    <div class="p-3 border-b border-primary/20 flex items-center justify-between">
+      <h2 class="text-xs font-semibold text-primary uppercase tracking-wider">// sessions</h2>
       <Button
         variant="ghost"
         size="icon"
-        class="h-6 w-6"
+        class="h-6 w-6 text-muted-foreground"
         @click="$emit('close')"
       >
         &times;
       </Button>
     </div>
-    <div class="p-3 border-b border-border">
+    <div class="p-3 border-b border-primary/20">
       <Button
         class="w-full"
         size="sm"
         @click="ui.newChatDialogOpen = true"
       >
-        + New Chat
+        + new_chat
       </Button>
     </div>
     <ScrollArea class="flex-1">
-      <div class="p-2 space-y-1">
+      <div class="p-1 space-y-0">
         <div v-if="sessions.loading" class="text-xs text-muted-foreground p-2">
-          Loading...
+          loading...
         </div>
         <div
           v-for="name in sessions.sessions"
           :key="name"
-          class="group flex items-center justify-between px-2 py-1.5 rounded-md text-sm cursor-pointer transition-colors"
-          :class="chat.currentSession === name ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-background'"
+          class="group flex items-center justify-between px-2 py-1.5 text-sm cursor-pointer transition-colors border-l-2"
+          :class="chat.currentSession === name ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-muted-foreground hover:bg-primary/5 hover:text-foreground'"
           @click="editingName !== name && sessions.loadSession(name)"
         >
           <input
             v-if="editingName === name"
             data-rename-input
             v-model="editValue"
-            class="bg-transparent border border-ring rounded px-1 text-sm w-full outline-none text-foreground"
+            class="bg-background border border-primary/30 px-1 text-sm w-full outline-none text-foreground"
             @keydown.enter="confirmRename(name)"
             @keydown.escape.stop="cancelEdit()"
             @blur="confirmRename(name)"
@@ -113,7 +113,7 @@ function cancelEdit() {
           </Button>
         </div>
         <div v-if="!sessions.loading && sessions.sessions.length === 0" class="text-xs text-muted-foreground p-2">
-          No saved sessions
+          // no saved sessions
         </div>
       </div>
     </ScrollArea>

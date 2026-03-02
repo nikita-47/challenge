@@ -34,16 +34,17 @@ function autoGrow(e: Event) {
 </script>
 
 <template>
-  <div class="border-t border-border p-3 bg-background">
+  <div class="border-t border-primary/20 p-3 bg-card">
     <div class="flex items-end gap-2">
+      <span class="text-primary text-sm font-bold pb-2 select-none">&gt;_</span>
       <div class="flex-1 relative">
         <textarea
           ref="textarea"
           v-model="input"
           @keydown="onKeydown"
           @input="autoGrow"
-          placeholder="Type a message..."
-          class="flex w-full resize-none rounded-lg border border-input bg-muted text-foreground px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          placeholder="Enter command..."
+          class="flex w-full resize-none border border-input bg-background text-foreground px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 focus-visible:border-primary/40 [caret-color:hsl(150_60%_45%)]"
           rows="1"
           :disabled="chat.isStreaming"
         />
@@ -55,7 +56,7 @@ function autoGrow(e: Event) {
           size="sm"
           @click="chat.stopStreaming()"
         >
-          Stop
+          ^C
         </Button>
         <Button
           v-else

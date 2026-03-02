@@ -4,3 +4,4 @@ challenge
 .agents/
 .playwright-mcp/
 skills-lock.json
+*.png

@@ -62,28 +62,28 @@ watch(() => chat.messages.length, () => {
 </script>
 
 <template>
-  <aside class="flex flex-col border-l border-border bg-muted h-full">
-    <div class="p-3 border-b border-border flex items-center justify-between">
+  <aside class="flex flex-col border-l border-primary/20 bg-card h-full">
+    <div class="p-3 border-b border-primary/20 flex items-center justify-between">
       <div class="flex items-center gap-1">
         <button
-          class="px-2 py-0.5 text-xs rounded transition-colors"
-          :class="tab === 'info' ? 'bg-background text-foreground font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+          class="px-2 py-0.5 text-xs transition-colors border"
+          :class="tab === 'info' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground hover:text-foreground border-transparent'"
           @click="tab = 'info'"
         >
-          Info
+          info
         </button>
         <button
-          class="px-2 py-0.5 text-xs rounded transition-colors"
-          :class="tab === 'raw' ? 'bg-background text-foreground font-medium shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+          class="px-2 py-0.5 text-xs transition-colors border"
+          :class="tab === 'raw' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground hover:text-foreground border-transparent'"
           @click="tab = 'raw'"
         >
-          Raw
+          raw
         </button>
       </div>
       <Button
         variant="ghost"
         size="icon"
-        class="h-6 w-6"
+        class="h-6 w-6 text-muted-foreground"
         @click="$emit('close')"
       >
         &times;
@@ -92,7 +92,7 @@ watch(() => chat.messages.length, () => {
 
     <!-- Raw JSON tab -->
     <ScrollArea v-if="tab === 'raw'" class="flex-1">
-      <pre class="p-3 text-xs text-foreground whitespace-pre-wrap break-words font-mono">{{ rawJson }}</pre>
+      <pre class="p-3 text-xs text-primary/70 whitespace-pre-wrap break-words font-mono">{{ rawJson }}</pre>
     </ScrollArea>
 
     <!-- Info tab -->
@@ -100,38 +100,38 @@ watch(() => chat.messages.length, () => {
       <div class="p-3 space-y-3 text-sm">
         <!-- Session -->
         <div class="space-y-2">
-          <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Session
+          <div class="text-xs font-medium text-primary uppercase tracking-wider">
+            // session
           </div>
           <div class="flex justify-between">
-            <span class="text-muted-foreground">Name</span>
+            <span class="text-muted-foreground">name</span>
             <span class="text-foreground truncate ml-2 max-w-[140px]" :title="chat.currentSession">
               {{ chat.currentSession }}
             </span>
           </div>
           <div class="flex justify-between">
-            <span class="text-muted-foreground">Exchanges</span>
-            <span class="text-foreground">{{ chat.exchanges }}</span>
+            <span class="text-muted-foreground">exchanges</span>
+            <span class="text-primary">{{ chat.exchanges }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-muted-foreground">Tokens in</span>
-            <span class="text-foreground">{{ chat.totalUsage.input.toLocaleString() }}</span>
+            <span class="text-muted-foreground">tokens_in</span>
+            <span class="text-primary">{{ chat.totalUsage.input.toLocaleString() }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-muted-foreground">Tokens out</span>
-            <span class="text-foreground">{{ chat.totalUsage.output.toLocaleString() }}</span>
+            <span class="text-muted-foreground">tokens_out</span>
+            <span class="text-primary">{{ chat.totalUsage.output.toLocaleString() }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-muted-foreground">Cost</span>
-            <span class="text-foreground">${{ chat.totalCost.toFixed(6) }}</span>
+            <span class="text-muted-foreground">cost</span>
+            <span class="text-accent-foreground">${{ chat.totalCost.toFixed(6) }}</span>
           </div>
           <div v-if="chat.hasSummary" class="flex justify-between">
-            <span class="text-muted-foreground">Compressed</span>
+            <span class="text-muted-foreground">compressed</span>
             <span class="text-foreground">
               <template v-if="chat.compressionCount > 0">
                 {{ chat.compressionCount }}x
               </template>
-              <template v-else>Yes</template>
+              <template v-else>yes</template>
               <span v-if="chat.tokensSaved > 0" class="text-muted-foreground">
                 (~{{ chat.tokensSaved.toLocaleString() }} saved)
               </span>
@@ -141,42 +141,42 @@ watch(() => chat.messages.length, () => {
 
         <!-- Strategy -->
         <div v-if="chat.settings?.strategy" class="space-y-2">
-          <Separator />
-          <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Strategy
+          <div class="border-t border-primary/10 my-2" />
+          <div class="text-xs font-medium text-primary uppercase tracking-wider">
+            // strategy
           </div>
           <div class="flex justify-between">
-            <span class="text-muted-foreground">Type</span>
-            <span class="text-foreground capitalize">{{ chat.settings.strategy }}</span>
+            <span class="text-muted-foreground">type</span>
+            <span class="text-accent-foreground">{{ chat.settings.strategy }}</span>
           </div>
           <div v-if="chat.settings.strategy !== 'branch'" class="flex justify-between">
-            <span class="text-muted-foreground">Window size</span>
-            <span class="text-foreground">{{ chat.settings.windowSize ?? 10 }}</span>
+            <span class="text-muted-foreground">window_size</span>
+            <span class="text-primary">{{ chat.settings.windowSize ?? 10 }}</span>
           </div>
           <div v-if="chat.settings.strategy === 'facts'" class="flex justify-between">
-            <span class="text-muted-foreground">Facts</span>
-            <span class="text-foreground">{{ Object.keys(chat.facts).length }} entries</span>
+            <span class="text-muted-foreground">facts</span>
+            <span class="text-primary">{{ Object.keys(chat.facts).length }} entries</span>
           </div>
           <!-- Facts detail -->
           <div v-if="chat.settings.strategy === 'facts' && Object.keys(chat.facts).length > 0" class="space-y-1">
             <div
               v-for="(val, key) in chat.facts"
               :key="key"
-              class="text-xs bg-background rounded p-1.5 break-words"
+              class="text-xs bg-background border border-border p-1.5 break-words"
             >
-              <span class="text-muted-foreground">{{ key }}:</span>
+              <span class="text-accent-foreground">{{ key }}:</span>
               <span class="text-foreground ml-1">{{ val }}</span>
             </div>
           </div>
           <!-- Branch info -->
           <div v-if="chat.settings.strategy === 'branch'" class="flex justify-between">
-            <span class="text-muted-foreground">Active branch</span>
-            <span class="text-foreground">{{ chat.activeBranch || 'main' }}</span>
+            <span class="text-muted-foreground">active_branch</span>
+            <span class="text-primary">{{ chat.activeBranch || 'main' }}</span>
           </div>
           <div v-if="chat.settings.strategy === 'branch' && chat.branches.length > 0" class="space-y-1">
-            <div class="text-xs text-muted-foreground">Branches:</div>
+            <div class="text-xs text-muted-foreground">branches:</div>
             <div class="flex justify-between text-xs" v-for="b in chat.branches" :key="b.name">
-              <span :class="b.name === chat.activeBranch ? 'text-foreground font-medium' : 'text-muted-foreground'">
+              <span :class="b.name === chat.activeBranch ? 'text-primary font-medium' : 'text-muted-foreground'">
                 {{ b.name }}
               </span>
               <span class="text-muted-foreground">{{ b.messageCount }} msgs</span>
@@ -184,37 +184,37 @@ watch(() => chat.messages.length, () => {
           </div>
         </div>
 
-        <Separator />
+        <div class="border-t border-primary/10 my-2" />
 
         <!-- Config -->
         <div class="space-y-2">
-          <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Config
+          <div class="text-xs font-medium text-primary uppercase tracking-wider">
+            // config
           </div>
           <div class="flex justify-between">
-            <span class="text-muted-foreground">Model</span>
+            <span class="text-muted-foreground">model</span>
             <span class="text-foreground text-xs truncate ml-2 max-w-[140px]" :title="displayConfig?.model">
               {{ displayConfig?.model ?? '—' }}
             </span>
           </div>
           <div class="flex justify-between">
-            <span class="text-muted-foreground">Max tokens</span>
-            <span class="text-foreground">{{ displayConfig?.maxTokens ?? '—' }}</span>
+            <span class="text-muted-foreground">max_tokens</span>
+            <span class="text-primary">{{ displayConfig?.maxTokens ?? '—' }}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-muted-foreground">Temperature</span>
-            <span class="text-foreground">
+            <span class="text-muted-foreground">temperature</span>
+            <span class="text-primary">
               {{ displayConfig?.temperature === -1 ? 'default' : displayConfig?.temperature ?? '—' }}
             </span>
           </div>
           <div v-if="displayConfig?.system" class="space-y-1">
-            <span class="text-muted-foreground">System prompt</span>
-            <p class="text-foreground text-xs bg-background rounded p-2 break-words">
+            <span class="text-muted-foreground">system_prompt</span>
+            <p class="text-foreground text-xs bg-background border border-border p-2 break-words">
               {{ displayConfig.system }}
             </p>
           </div>
           <div v-else class="flex justify-between">
-            <span class="text-muted-foreground">System prompt</span>
+            <span class="text-muted-foreground">system_prompt</span>
             <span class="text-foreground">—</span>
           </div>
         </div>

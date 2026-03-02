@@ -23,21 +23,21 @@ const inputDisplay = computed(() => {
 <template>
   <Collapsible v-model:open="expanded">
     <div
-      class="rounded-md border text-xs"
-      :class="toolCall.isError ? 'border-destructive bg-destructive/10' : 'border-border bg-black/20'"
+      class="border text-xs"
+      :class="toolCall.isError ? 'border-destructive/50 bg-destructive/5' : 'border-border bg-background'"
     >
-      <CollapsibleTrigger class="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-accent/50 transition-colors rounded-t-md">
-        <span class="text-amber-400 font-mono">{{ toolCall.tool }}</span>
+      <CollapsibleTrigger class="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-primary/5 transition-colors">
+        <span class="text-primary font-mono">{{ toolCall.tool }}</span>
         <span class="text-muted-foreground truncate flex-1 font-mono">{{ inputDisplay }}</span>
-        <span class="text-muted-foreground">{{ expanded ? '▼' : '▶' }}</span>
+        <span class="text-muted-foreground text-[10px]">{{ expanded ? '[-]' : '[+]' }}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div v-if="toolCall.output" class="border-t border-border px-2 py-1.5">
-          <pre class="whitespace-pre-wrap text-muted-foreground font-mono max-h-48 overflow-y-auto">{{ toolCall.output }}</pre>
+          <pre class="whitespace-pre-wrap text-primary/70 font-mono max-h-48 overflow-y-auto text-[11px]">{{ toolCall.output }}</pre>
         </div>
       </CollapsibleContent>
-      <div v-if="!toolCall.output && !expanded" class="px-2 py-1 text-muted-foreground">
-        <span class="animate-pulse">Running...</span>
+      <div v-if="!toolCall.output && !expanded" class="px-2 py-1 text-primary/50">
+        <span class="animate-pulse">executing...</span>
       </div>
     </div>
   </Collapsible>
