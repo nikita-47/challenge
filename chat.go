@@ -167,7 +167,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			continue
 		case strings.HasPrefix(input, "/agent "):
 			task := strings.TrimPrefix(input, "/agent ")
-			agent := newAgent(apiKey, cfg)
+			agent := newAgentWithTools(apiKey, cfg)
 			result, err := agent.Run(task, cw.Messages, cliAgentEmit)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Agent error: %v\n\n", err)

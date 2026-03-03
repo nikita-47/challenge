@@ -89,6 +89,8 @@ export const useChatStore = defineStore('chat', () => {
         temperature: settings.value.temperature,
         strategy: settings.value.strategy,
         windowSize: settings.value.windowSize,
+        profile: settings.value.profile,
+        project: settings.value.project,
       }),
     }
 

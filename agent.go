@@ -84,8 +84,13 @@ func newAgent(apiKey string, cfg config) *Agent {
 		maxTokens:   maxTokens,
 		system:      cfg.system,
 		temperature: cfg.temperature,
-		tools:       defaultTools(),
 	}
+}
+
+func newAgentWithTools(apiKey string, cfg config) *Agent {
+	a := newAgent(apiKey, cfg)
+	a.tools = defaultTools()
+	return a
 }
 
 func defaultTools() []toolDef {
@@ -165,7 +170,9 @@ func (a *Agent) buildPayload() map[string]any {
 		"model":      a.model,
 		"max_tokens": a.maxTokens,
 		"messages":   a.history,
-		"tools":      a.tools,
+	}
+	if len(a.tools) > 0 {
+		payload["tools"] = a.tools
 	}
 	if a.system != "" {
 		payload["system"] = a.system

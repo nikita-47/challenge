@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { fetchSessions, fetchSession, deleteSessionAPI, renameSessionAPI } from '@/lib/api'
+import type { SessionInfo } from '@/lib/api'
 import { useChatStore } from './chat'
 import type { ChatMessage, ChatSettings } from '@/lib/types'
 
 export const useSessionsStore = defineStore('sessions', () => {
-  const sessions = ref<string[]>([])
+  const sessions = ref<SessionInfo[]>([])
   const loading = ref(false)
 
   async function loadList() {
@@ -76,7 +77,7 @@ export const useSessionsStore = defineStore('sessions', () => {
   async function deleteSession(name: string) {
     try {
       await deleteSessionAPI(name)
-      sessions.value = sessions.value.filter((s) => s !== name)
+      sessions.value = sessions.value.filter((s) => s.name !== name)
       const chat = useChatStore()
       if (chat.currentSession === name) {
         chat.clearMessages()
@@ -89,9 +90,9 @@ export const useSessionsStore = defineStore('sessions', () => {
 
   async function renameSession(oldName: string, newName: string) {
     await renameSessionAPI(oldName, newName)
-    const idx = sessions.value.indexOf(oldName)
-    if (idx !== -1) {
-      sessions.value[idx] = newName
+    const entry = sessions.value.find((s) => s.name === oldName)
+    if (entry) {
+      entry.name = newName
     }
     const chat = useChatStore()
     if (chat.currentSession === oldName) {
@@ -107,7 +108,11 @@ export const useSessionsStore = defineStore('sessions', () => {
     if (chatSettings) {
       chat.setSettings(chatSettings)
     }
-    sessions.value.unshift(sessionName)
+    sessions.value.unshift({
+      name: sessionName,
+      profile: chatSettings?.profile,
+      project: chatSettings?.project,
+    })
   }
 
   return {

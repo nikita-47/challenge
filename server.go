@@ -266,13 +266,13 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 // ─── GET /api/sessions ───────────────────────────────────────────────────────
 
 func handleListSessions(w http.ResponseWriter, r *http.Request) {
-	names, err := listSessions()
+	list, err := listSessions()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(names)
+	json.NewEncoder(w).Encode(list)
 }
 
 // ─── GET /api/sessions/:name ─────────────────────────────────────────────────

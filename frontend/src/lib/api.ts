@@ -1,4 +1,10 @@
-export async function fetchSessions(): Promise<string[]> {
+export interface SessionInfo {
+  name: string
+  profile?: string
+  project?: string
+}
+
+export async function fetchSessions(): Promise<SessionInfo[]> {
   const resp = await fetch('/api/sessions')
   if (!resp.ok) {
     throw new Error(`Failed to fetch sessions: ${resp.statusText}`)

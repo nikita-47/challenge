@@ -128,8 +128,14 @@ func renameSession(oldName, newName string) error {
 	return os.Rename(sessionPath(oldName), newPath)
 }
 
-// listSessions returns names of all saved sessions.
-func listSessions() ([]string, error) {
+type sessionInfo struct {
+	Name    string `json:"name"`
+	Profile string `json:"profile,omitempty"`
+	Project string `json:"project,omitempty"`
+}
+
+// listSessions returns info about all saved sessions.
+func listSessions() ([]sessionInfo, error) {
 	entries, err := os.ReadDir(historyDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -137,15 +143,25 @@ func listSessions() ([]string, error) {
 		}
 		return nil, err
 	}
-	var names []string
+	var result []sessionInfo
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
 		name := e.Name()
-		if strings.HasSuffix(name, ".json") {
-			names = append(names, strings.TrimSuffix(name, ".json"))
+		if !strings.HasSuffix(name, ".json") {
+			continue
 		}
+		sName := strings.TrimSuffix(name, ".json")
+		info := sessionInfo{Name: sName}
+		if data, err := os.ReadFile(filepath.Join(historyDir, name)); err == nil {
+			var sf sessionFile
+			if json.Unmarshal(data, &sf) == nil && sf.Settings != nil {
+				info.Profile = sf.Settings.Profile
+				info.Project = sf.Settings.Project
+			}
+		}
+		result = append(result, info)
 	}
-	return names, nil
+	return result, nil
 }

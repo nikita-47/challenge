@@ -161,35 +161,35 @@ watch(tab, (v) => {
             loading...
           </div>
           <div
-            v-for="name in sessions.sessions"
-            :key="name"
+            v-for="s in sessions.sessions"
+            :key="s.name"
             class="group flex items-center justify-between px-2 py-1.5 text-sm cursor-pointer transition-colors border-l-2"
-            :class="chat.currentSession === name ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-muted-foreground hover:bg-primary/5 hover:text-foreground'"
-            @click="editingName !== name && sessions.loadSession(name)"
+            :class="chat.currentSession === s.name ? 'border-primary text-primary bg-primary/5' : 'border-transparent text-muted-foreground hover:bg-primary/5 hover:text-foreground'"
+            @click="editingName !== s.name && sessions.loadSession(s.name)"
           >
             <input
-              v-if="editingName === name"
+              v-if="editingName === s.name"
               data-rename-input
               v-model="editValue"
               class="bg-background border border-primary/30 px-1 text-sm w-full outline-none text-foreground"
-              @keydown.enter="confirmRename(name)"
+              @keydown.enter="confirmRename(s.name)"
               @keydown.escape.stop="cancelEdit()"
-              @blur="confirmRename(name)"
+              @blur="confirmRename(s.name)"
               @click.stop
             />
-            <span
-              v-else
-              class="truncate"
-              @dblclick.stop="startEdit(name)"
-            >
-              {{ name }}
-            </span>
+            <div v-else class="min-w-0 flex-1" @dblclick.stop="startEdit(s.name)">
+              <div class="truncate">{{ s.name }}</div>
+              <div v-if="s.profile || s.project" class="flex gap-1 mt-0.5">
+                <span v-if="s.profile" class="text-[10px] text-primary/60 border border-primary/20 px-1 leading-tight">{{ s.profile }}</span>
+                <span v-if="s.project" class="text-[10px] text-accent-foreground/60 border border-accent-foreground/20 px-1 leading-tight">{{ s.project }}</span>
+              </div>
+            </div>
             <Button
-              v-if="editingName !== name"
+              v-if="editingName !== s.name"
               variant="ghost"
               size="icon"
               class="opacity-0 group-hover:opacity-100 h-6 w-6 shrink-0 text-destructive hover:text-destructive"
-              @click.stop="sessions.deleteSession(name)"
+              @click.stop="sessions.deleteSession(s.name)"
               title="Delete session"
             >
               &times;

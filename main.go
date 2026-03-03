@@ -56,7 +56,7 @@ func main() {
 	}
 
 	if cfg.agent != "" {
-		agent := newAgent(apiKey, cfg)
+		agent := newAgentWithTools(apiKey, cfg)
 		result, err := agent.Run(cfg.agent, nil, cliAgentEmit)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Agent error: %v\n", err)
