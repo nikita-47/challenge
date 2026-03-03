@@ -4,7 +4,6 @@ import { useChatStore } from '@/stores/chat'
 import { useUIStore } from '@/stores/ui'
 import { fetchSessionRaw } from '@/lib/api'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 
 defineEmits<{ close: [] }>()
@@ -181,6 +180,22 @@ watch(() => chat.messages.length, () => {
               </span>
               <span class="text-muted-foreground">{{ b.messageCount }} msgs</span>
             </div>
+          </div>
+        </div>
+
+        <!-- Memory -->
+        <div v-if="chat.settings?.profile || chat.settings?.project" class="space-y-2">
+          <div class="border-t border-primary/10 my-2" />
+          <div class="text-xs font-medium text-primary uppercase tracking-wider">
+            // memory
+          </div>
+          <div v-if="chat.settings.profile" class="flex justify-between">
+            <span class="text-muted-foreground">profile</span>
+            <span class="text-accent-foreground">{{ chat.settings.profile }}</span>
+          </div>
+          <div v-if="chat.settings.project" class="flex justify-between">
+            <span class="text-muted-foreground">project</span>
+            <span class="text-accent-foreground">{{ chat.settings.project }}</span>
           </div>
         </div>
 

@@ -83,6 +83,108 @@ export async function fetchSessionRaw(name: string): Promise<string> {
   return resp.text()
 }
 
+// ─── Memory API ──────────────────────────────────────────────────────────────
+
+export async function fetchProfiles(): Promise<string[]> {
+  const resp = await fetch('/api/memory/profiles')
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch profiles: ${resp.statusText}`)
+  }
+  const data = await resp.json()
+  return data ?? []
+}
+
+export async function fetchProfile(name: string): Promise<{ name: string; content: string }> {
+  const resp = await fetch(`/api/memory/profiles/${encodeURIComponent(name)}`)
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch profile: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function createProfile(name: string, content: string) {
+  const resp = await fetch('/api/memory/profiles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, content }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to create profile: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function updateProfile(name: string, content: string) {
+  const resp = await fetch(`/api/memory/profiles/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to update profile: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function deleteProfileAPI(name: string) {
+  const resp = await fetch(`/api/memory/profiles/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to delete profile: ${resp.statusText}`)
+  }
+}
+
+export async function fetchProjects(): Promise<string[]> {
+  const resp = await fetch('/api/memory/projects')
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch projects: ${resp.statusText}`)
+  }
+  const data = await resp.json()
+  return data ?? []
+}
+
+export async function fetchProject(name: string): Promise<{ name: string; content: string }> {
+  const resp = await fetch(`/api/memory/projects/${encodeURIComponent(name)}`)
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch project: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function createProject(name: string, content: string) {
+  const resp = await fetch('/api/memory/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, content }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to create project: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function updateProject(name: string, content: string) {
+  const resp = await fetch(`/api/memory/projects/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to update project: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function deleteProjectAPI(name: string) {
+  const resp = await fetch(`/api/memory/projects/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to delete project: ${resp.statusText}`)
+  }
+}
+
 export async function fetchBranchesAPI(session: string) {
   const resp = await fetch(`/api/sessions/${encodeURIComponent(session)}/branches`)
   if (!resp.ok) {

@@ -252,6 +252,28 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 12 — Memory Model (Memory Layers) ✅
+
+**Assignment:** Implement a 3-layer memory model for the assistant: short-term (chat messages, already exists), working memory (project .md files shared across chats), and long-term memory (profile .md files selected at chat creation). Storage on disk, API, selection at chat creation, minimal CRUD from UI.
+
+**What was built on top of Day 11:**
+- `memory.go` — CRUD functions for .md files in `.memory/profiles/` and `.memory/projects/` with path validation
+- `history.go` — extended `sessionSettings` with `Profile` and `Project` fields
+- `api.go` — `buildFullSystemPrompt()` assembles system prompt from memory layers (profile → project → user system prompt)
+- `server.go` — extended `chatRequest` with profile/project; injected memory into handleChat; added REST endpoints for profiles/projects CRUD
+- `frontend/src/lib/types.ts` — `MemoryFile` type, extended `ChatSettings` with profile/project
+- `frontend/src/lib/api.ts` — memory API functions (fetchProfiles, fetchProfile, createProfile, updateProfile, deleteProfileAPI + same for projects)
+- `frontend/src/stores/memory.ts` — Pinia store for profiles/projects lists
+- `frontend/src/components/NewChatDialog.vue` — profile/project selects in new chat dialog
+- `frontend/src/components/MemoryEditorDialog.vue` — dialog for creating/editing .md memory files
+- `frontend/src/components/ChatInfoPanel.vue` — memory section in info tab + new "mem" tab with CRUD for profiles/projects
+- `frontend/src/stores/sessions.ts` — profile/project mapping on session load
+- `.gitignore` — added `.memory/`
+
+**Key code:** `buildFullSystemPrompt()`, `handleMemoryList()`, `handleMemoryItem()`, `useMemoryStore`, `MemoryEditorDialog.vue`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

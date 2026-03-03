@@ -160,7 +160,7 @@ func executeTool(name string, rawInput json.RawMessage) (string, bool) {
 
 // ─── API call (non-streaming) ────────────────────────────────────────────────
 
-func (a *Agent) callAPI() (*apiResponse, error) {
+func (a *Agent) buildPayload() map[string]any {
 	payload := map[string]any{
 		"model":      a.model,
 		"max_tokens": a.maxTokens,
@@ -173,6 +173,11 @@ func (a *Agent) callAPI() (*apiResponse, error) {
 	if a.temperature > 0 {
 		payload["temperature"] = a.temperature
 	}
+	return payload
+}
+
+func (a *Agent) callAPI() (*apiResponse, error) {
+	payload := a.buildPayload()
 	body, _ := json.Marshal(payload)
 
 	req, _ := http.NewRequest("POST", "https://api.anthropic.com/v1/messages", bytes.NewReader(body))
@@ -218,6 +223,12 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 
 	for turn := 1; turn <= a.maxTurns; turn++ {
 		emit(AgentEvent{Type: "turn", Turn: turn, MaxTurn: a.maxTurns})
+
+		if turn == 1 {
+			payload := a.buildPayload()
+			payloadJSON, _ := json.MarshalIndent(payload, "", "  ")
+			emit(AgentEvent{Type: "api_request", Text: string(payloadJSON)})
+		}
 
 		resp, err := a.callAPI()
 		if err != nil {

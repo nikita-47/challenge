@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import { useUIStore } from '@/stores/ui'
 import { useSessionsStore } from '@/stores/sessions'
+import { useMemoryStore } from '@/stores/memory'
 import {
   Dialog,
   DialogContent,
@@ -41,8 +42,13 @@ const models = [
 
 const ui = useUIStore()
 const sessions = useSessionsStore()
+const memory = useMemoryStore()
+
+const NONE = '__none__'
 
 const chatName = ref('')
+const profile = ref(NONE)
+const project = ref(NONE)
 const model = ref('')
 const temperature = ref([0.7])
 const maxTokens = ref(1024)
@@ -60,6 +66,9 @@ watch(() => ui.newChatDialogOpen, (open) => {
     system.value = ui.config?.system ?? ''
     strategy.value = 'summary'
     windowSize.value = 10
+    profile.value = NONE
+    project.value = NONE
+    memory.loadAll()
   }
 })
 
@@ -71,6 +80,8 @@ function confirm() {
     system: system.value,
     strategy: strategy.value,
     windowSize: strategy.value !== 'branch' ? windowSize.value : undefined,
+    profile: profile.value !== NONE ? profile.value : undefined,
+    project: project.value !== NONE ? project.value : undefined,
   }
   sessions.newChat(chatName.value || undefined, s)
   ui.newChatDialogOpen = false
@@ -93,6 +104,36 @@ function confirm() {
             v-model="chatName"
             placeholder="Auto-generated if empty"
           />
+        </div>
+
+        <div v-if="memory.profiles.length > 0" class="space-y-2">
+          <Label>Profile (long-term memory)</Label>
+          <Select v-model="profile">
+            <SelectTrigger>
+              <SelectValue placeholder="None" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem :value="NONE">None</SelectItem>
+              <SelectItem v-for="p in memory.profiles" :key="p" :value="p">
+                {{ p }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div v-if="memory.projects.length > 0" class="space-y-2">
+          <Label>Project (working memory)</Label>
+          <Select v-model="project">
+            <SelectTrigger>
+              <SelectValue placeholder="None" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem :value="NONE">None</SelectItem>
+              <SelectItem v-for="p in memory.projects" :key="p" :value="p">
+                {{ p }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div class="space-y-2">

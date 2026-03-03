@@ -7,6 +7,13 @@ export interface ChatSettings {
   system: string
   strategy?: ContextStrategy
   windowSize?: number
+  profile?: string
+  project?: string
+}
+
+export interface MemoryFile {
+  name: string
+  content: string
 }
 
 export interface BranchInfo {
@@ -29,6 +36,7 @@ export interface ChatMessage {
   toolCalls?: ToolCall[]
   isStreaming?: boolean
   event?: SystemEvent
+  apiRequest?: string
 }
 
 export interface ToolCall {
@@ -112,6 +120,11 @@ export interface FactsUpdatedEvent {
   facts: Record<string, string>
 }
 
+export interface ApiRequestEvent {
+  type: 'api_request'
+  text: string
+}
+
 export type SSEEvent =
   | TextDeltaEvent
   | UsageEvent
@@ -123,4 +136,5 @@ export type SSEEvent =
   | ToolResultEvent
   | CompressEvent
   | FactsUpdatedEvent
+  | ApiRequestEvent
   | { type: 'text'; Text: string }

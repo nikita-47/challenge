@@ -65,6 +65,22 @@ func startServer(apiKey string, cfg config) {
 		}
 	})
 
+	// ─── Memory endpoints ────────────────────────────────────────────────────
+	mux.HandleFunc("/api/memory/profiles", func(w http.ResponseWriter, r *http.Request) {
+		handleMemoryList(w, r, memoryProfilesDir(), saveProfile)
+	})
+	mux.HandleFunc("/api/memory/profiles/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/api/memory/profiles/")
+		handleMemoryItem(w, r, name, memoryProfilesDir())
+	})
+	mux.HandleFunc("/api/memory/projects", func(w http.ResponseWriter, r *http.Request) {
+		handleMemoryList(w, r, memoryProjectsDir(), saveProject)
+	})
+	mux.HandleFunc("/api/memory/projects/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/api/memory/projects/")
+		handleMemoryItem(w, r, name, memoryProjectsDir())
+	})
+
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -134,6 +150,8 @@ type chatRequest struct {
 	Temperature float64 `json:"temperature"`
 	Strategy    string  `json:"strategy"`
 	WindowSize  int     `json:"windowSize"`
+	Profile     string  `json:"profile"`
+	Project     string  `json:"project"`
 }
 
 func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
@@ -172,6 +190,15 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	if req.WindowSize > 0 && cw.Settings.WindowSize == 0 {
 		cw.Settings.WindowSize = req.WindowSize
 	}
+	if req.Profile != "" && cw.Settings.Profile == "" {
+		cw.Settings.Profile = req.Profile
+	}
+	if req.Project != "" && cw.Settings.Project == "" {
+		cw.Settings.Project = req.Project
+	}
+
+	// Inject memory layers into system prompt.
+	cfg.system = buildFullSystemPrompt(cfg, cw.Settings)
 
 	// Restore cumulative stats from session (or start fresh).
 	stats := cw.Stats.toTokenStats()
@@ -452,4 +479,82 @@ func handleSwitchBranch(w http.ResponseWriter, r *http.Request, sessionName stri
 		"branch":   req.Name,
 		"messages": activeMessages(cw),
 	})
+}
+
+// ─── Memory endpoints ───────────────────────────────────────────────────────
+
+func handleMemoryList(w http.ResponseWriter, r *http.Request, dir string, saveFn func(string, string) error) {
+	switch r.Method {
+	case http.MethodGet:
+		names, err := listMemoryFiles(dir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(names)
+
+	case http.MethodPost:
+		var req struct {
+			Name    string `json:"name"`
+			Content string `json:"content"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := saveFn(req.Name, req.Content); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "created", "name": req.Name})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func handleMemoryItem(w http.ResponseWriter, r *http.Request, name, dir string) {
+	if name == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		content, err := getMemoryFile(dir, name)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"name": name, "content": content})
+
+	case http.MethodPut:
+		var req struct {
+			Content string `json:"content"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := saveMemoryFile(dir, name, req.Content); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "updated", "name": name})
+
+	case http.MethodDelete:
+		if err := deleteMemoryFile(dir, name); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }

@@ -11,15 +11,18 @@ import { Button } from '@/components/ui/button'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
 import { useUIStore } from '@/stores/ui'
+import { useMemoryStore } from '@/stores/memory'
 
 const chat = useChatStore()
 
 const sessionsStore = useSessionsStore()
 const ui = useUIStore()
+const memory = useMemoryStore()
 
 onMounted(() => {
   sessionsStore.loadList()
   ui.loadConfig()
+  memory.loadAll()
 })
 </script>
 

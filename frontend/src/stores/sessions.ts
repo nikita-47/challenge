@@ -49,6 +49,8 @@ export const useSessionsStore = defineStore('sessions', () => {
           system: data.settings.system ?? '',
           strategy: data.settings.strategy ?? undefined,
           windowSize: data.settings.window_size ?? data.settings.windowSize ?? undefined,
+          profile: data.settings.profile ?? undefined,
+          project: data.settings.project ?? undefined,
         })
       } else {
         chat.setSettings(null)

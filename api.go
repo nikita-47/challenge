@@ -90,6 +90,27 @@ type modelInfo struct {
 	costOut  float64 // cost per 1M output tokens
 }
 
+// buildFullSystemPrompt assembles system prompt from memory layers + user system prompt.
+func buildFullSystemPrompt(cfg config, settings *sessionSettings) string {
+	var sections []string
+
+	if settings != nil && settings.Profile != "" {
+		if content, err := getProfile(settings.Profile); err == nil && content != "" {
+			sections = append(sections, "# Profile\n\n"+content)
+		}
+	}
+	if settings != nil && settings.Project != "" {
+		if content, err := getProject(settings.Project); err == nil && content != "" {
+			sections = append(sections, "# Project Context\n\n"+content)
+		}
+	}
+	if cfg.system != "" {
+		sections = append(sections, cfg.system)
+	}
+
+	return strings.Join(sections, "\n\n---\n\n")
+}
+
 func buildSystemPrompt(cfg config) string {
 	parts := []string{}
 	if cfg.system != "" {

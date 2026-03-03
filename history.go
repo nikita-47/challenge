@@ -19,6 +19,8 @@ type sessionSettings struct {
 	System      string  `json:"system,omitempty"`
 	Strategy    string  `json:"strategy,omitempty"`    // "summary"|"window"|"facts"|"branch"
 	WindowSize  int     `json:"window_size,omitempty"` // N for window/facts strategies (default 20)
+	Profile     string  `json:"profile,omitempty"`     // memory profile name
+	Project     string  `json:"project,omitempty"`     // memory project name
 }
 
 type sessionStats struct {

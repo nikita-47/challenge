@@ -110,6 +110,17 @@ export const useChatStore = defineStore('chat', () => {
             // Agent goal echo, ignore
             break
 
+          case 'api_request': {
+            for (let i = messages.value.length - 1; i >= 0; i--) {
+              const m = messages.value[i]
+              if (m && m.role === 'user') {
+                m.apiRequest = event.text
+                break
+              }
+            }
+            break
+          }
+
           case 'turn':
             // Agent turn marker — could show in UI
             break
