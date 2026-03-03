@@ -41,6 +41,7 @@ See `TASKS.md` for all daily assignments and their status.
 - `.env` — stores `ANTHROPIC_API_KEY` (not committed)
 - `.chat_history/` — saved chat sessions (not committed)
 - `.memory/` — memory layers: `profiles/` (long-term) + `projects/` (working), .md files (not committed)
+- `.claude/agents/` — sub-agent configs: `go.md` (backend, sonnet), `frontend.md` (Vue/TS, sonnet), `qa.md` (tester, haiku)
 
 ## How to run
 

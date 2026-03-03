@@ -7,7 +7,8 @@
       "Bash(curl:*)",
       "Bash(ls:*)",
       "Bash(grep:*)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(python3)"
     ]
   }
 }

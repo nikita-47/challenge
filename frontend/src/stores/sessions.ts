@@ -38,6 +38,9 @@ export const useSessionsStore = defineStore('sessions', () => {
             tokensSaved: m.event.tokens_saved ?? m.event.tokensSaved,
           }
         }
+        if (m.api_request) {
+          msg.apiRequest = m.api_request
+        }
         return msg
       })
       chat.setMessages(msgs)

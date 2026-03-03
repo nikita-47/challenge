@@ -80,6 +80,7 @@ func filterAPIMessages(msgs []message) []message {
 		if m.Role == "system" {
 			continue
 		}
+		m.ApiRequest = "" // strip debug data before sending to LLM
 		result = append(result, m)
 	}
 	return result

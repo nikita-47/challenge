@@ -176,7 +176,11 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 
 	sseSetup(w)
 
+	var apiRequestText string
 	emit := func(ev AgentEvent) {
+		if ev.Type == "api_request" {
+			apiRequestText = ev.Text
+		}
 		sseWrite(w, ev)
 	}
 
@@ -240,7 +244,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	stats.Exchanges += agent.Stats.Exchanges
 
 	// Save to session (append to raw Messages, not compressed).
-	appendMessage(cw, message{Role: "user", Content: req.Message})
+	appendMessage(cw, message{Role: "user", Content: req.Message, ApiRequest: apiRequestText})
 	appendMessage(cw, message{Role: "assistant", Content: result})
 
 	// Post-process: extract facts for facts strategy.

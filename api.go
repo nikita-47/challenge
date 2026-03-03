@@ -19,23 +19,26 @@ type messageEvent struct {
 }
 
 type message struct {
-	Role    string        `json:"role"`
-	Content any           `json:"content"`
-	Event   *messageEvent `json:"event,omitempty"`
+	Role       string        `json:"role"`
+	Content    any           `json:"content"`
+	Event      *messageEvent `json:"event,omitempty"`
+	ApiRequest string        `json:"api_request,omitempty"`
 }
 
 // UnmarshalJSON handles both string and []contentBlock content for backward compatibility.
 func (m *message) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Role    string          `json:"role"`
-		Content json.RawMessage `json:"content"`
-		Event   *messageEvent   `json:"event,omitempty"`
+		Role       string          `json:"role"`
+		Content    json.RawMessage `json:"content"`
+		Event      *messageEvent   `json:"event,omitempty"`
+		ApiRequest string          `json:"api_request,omitempty"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	m.Role = raw.Role
 	m.Event = raw.Event
+	m.ApiRequest = raw.ApiRequest
 
 	// System events have no meaningful content.
 	if m.Role == "system" {
