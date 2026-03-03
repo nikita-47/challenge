@@ -30,5 +30,8 @@
       "WebFetch(domain:www.shadcn-vue.com)",
       "mcp__playwright"
     ]
+  },
+  "enabledPlugins": {
+    "ui-ux-pro-max@ui-ux-pro-max-skill": true
   }
 }

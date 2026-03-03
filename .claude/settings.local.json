@@ -1,5 +1,13 @@
 {
   "permissions": {
-    "allow": []
+    "allow": [
+      "Bash(echo not found or invalid:*)",
+      "Bash(git commit:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(pkill:*)"
+    ]
   }
 }
