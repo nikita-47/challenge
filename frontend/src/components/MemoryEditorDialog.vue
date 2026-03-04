@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button'
 const props = defineProps<{
   open: boolean
   mode: 'create' | 'edit'
-  kind: 'profile' | 'project'
+  kind: 'profile' | 'project' | 'operator'
   initialName?: string
   initialContent?: string
 }>()

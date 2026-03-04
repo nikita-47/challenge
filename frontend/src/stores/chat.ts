@@ -91,6 +91,7 @@ export const useChatStore = defineStore('chat', () => {
         windowSize: settings.value.windowSize,
         profile: settings.value.profile,
         project: settings.value.project,
+        operator: settings.value.operator,
       }),
     }
 
@@ -176,6 +177,9 @@ export const useChatStore = defineStore('chat', () => {
 
           case 'facts_updated':
             facts.value = event.facts
+            break
+
+          case 'memory_updated':
             break
 
           case 'compress': {

@@ -21,6 +21,7 @@ type sessionSettings struct {
 	WindowSize  int     `json:"window_size,omitempty"` // N for window/facts strategies (default 20)
 	Profile     string  `json:"profile,omitempty"`     // memory profile name
 	Project     string  `json:"project,omitempty"`     // memory project name
+	Operator    string  `json:"operator,omitempty"`    // operator profile name
 }
 
 type sessionStats struct {
@@ -129,9 +130,10 @@ func renameSession(oldName, newName string) error {
 }
 
 type sessionInfo struct {
-	Name    string `json:"name"`
-	Profile string `json:"profile,omitempty"`
-	Project string `json:"project,omitempty"`
+	Name     string `json:"name"`
+	Profile  string `json:"profile,omitempty"`
+	Project  string `json:"project,omitempty"`
+	Operator string `json:"operator,omitempty"`
 }
 
 // listSessions returns info about all saved sessions.
@@ -159,6 +161,7 @@ func listSessions() ([]sessionInfo, error) {
 			if json.Unmarshal(data, &sf) == nil && sf.Settings != nil {
 				info.Profile = sf.Settings.Profile
 				info.Project = sf.Settings.Project
+				info.Operator = sf.Settings.Operator
 			}
 		}
 		result = append(result, info)

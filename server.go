@@ -81,6 +81,14 @@ func startServer(apiKey string, cfg config) {
 		handleMemoryItem(w, r, name, memoryProjectsDir())
 	})
 
+	mux.HandleFunc("/api/memory/operators", func(w http.ResponseWriter, r *http.Request) {
+		handleMemoryList(w, r, memoryOperatorsDir(), saveOperator)
+	})
+	mux.HandleFunc("/api/memory/operators/", func(w http.ResponseWriter, r *http.Request) {
+		name := strings.TrimPrefix(r.URL.Path, "/api/memory/operators/")
+		handleMemoryItem(w, r, name, memoryOperatorsDir())
+	})
+
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -152,6 +160,7 @@ type chatRequest struct {
 	WindowSize  int     `json:"windowSize"`
 	Profile     string  `json:"profile"`
 	Project     string  `json:"project"`
+	Operator    string  `json:"operator"`
 }
 
 func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
@@ -200,6 +209,9 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	if req.Project != "" && cw.Settings.Project == "" {
 		cw.Settings.Project = req.Project
 	}
+	if req.Operator != "" && cw.Settings.Operator == "" {
+		cw.Settings.Operator = req.Operator
+	}
 
 	// Inject memory layers into system prompt.
 	cfg.system = buildFullSystemPrompt(cfg, cw.Settings)
@@ -235,7 +247,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	result, err := agent.Run(req.Message, compressed, emit)
 	if err != nil {
 		sseWrite(w, map[string]any{"type": "error", "message": err.Error()})
-		return
+		// Don't return — still save messages and run memory update.
 	}
 
 	// Accumulate agent stats into session lifetime stats.
@@ -256,6 +268,15 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 				"type":  "facts_updated",
 				"facts": cw.Facts,
 			})
+		}
+	}
+
+	// Auto-update profile/project memory.
+	if cw.Settings.Profile != "" || cw.Settings.Project != "" {
+		if err := maybeUpdateMemory(apiKey, cw, &stats); err != nil {
+			fmt.Fprintf(os.Stderr, "[memory_update] error: %v\n", err)
+		} else {
+			sseWrite(w, map[string]any{"type": "memory_updated"})
 		}
 	}
 

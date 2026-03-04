@@ -1,4 +1,5 @@
 ---
+description: "Go backend specialist. Use proactively for .go file changes, API endpoints, server code, sessions, memory, strategies."
 model: sonnet
 tools: Read, Grep, Glob, Edit, Write, Bash
 memory: project
@@ -15,6 +16,7 @@ maxTurns: 40
 Серверная часть: HTTP API, SSE-стриминг, сессии, стратегии контекста, память.
 
 Ключевые файлы (от самых важных):
+
 - `server.go` — HTTP-роутер, все handlers для API endpoints
 - `api.go` — API-клиент, формирование запросов, SSE-парсинг, OpenAI-compatible клиент
 - `history.go` — CRUD для сессий (save/load/delete/list JSON в `.chat_history/`)
@@ -28,6 +30,7 @@ maxTurns: 40
 - `main.go` — точка входа, CLI-флаги, конфигурация
 
 Файлы CLI (не приоритет, но знать):
+
 - `chat.go` — интерактивный REPL
 - `render.go` — ANSI-рендеринг markdown
 - `compare.go` — split-screen TUI
@@ -60,17 +63,6 @@ DELETE /api/memory/projects/:name       — удалить проект
 - **Никогда не трогай `frontend/`** — это зона фронтенд-агента
 - **Никогда не используй Python** — всё на Go или bash
 - **Никогда не добавляй внешние Go-зависимости** — только stdlib
-- **Никогда не используй single-line return** — всегда с фигурными скобками:
-  ```go
-  // Правильно
-  if err != nil {
-      return err
-  }
-
-  // Неправильно
-  if err != nil { return err }
-  ```
-- Модель Claude: `claude-sonnet-4-5-20250929`
 - Сборка всегда `go run .` (не `go run main.go`)
 
 ## Рабочий цикл
@@ -84,6 +76,7 @@ DELETE /api/memory/projects/:name       — удалить проект
 5. **curl** — проверить затронутые API endpoints
 
 Пример проверки:
+
 ```bash
 # Список сессий
 curl -s http://localhost:8080/api/sessions | head -c 500

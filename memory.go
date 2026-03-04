@@ -92,3 +92,11 @@ func listProjects() ([]string, error)          { return listMemoryFiles(memoryPr
 func getProject(name string) (string, error)   { return getMemoryFile(memoryProjectsDir(), name) }
 func saveProject(name, content string) error    { return saveMemoryFile(memoryProjectsDir(), name, content) }
 func deleteProject(name string) error           { return deleteMemoryFile(memoryProjectsDir(), name) }
+
+// ─── Operator helpers ───────────────────────────────────────────────────────
+
+func memoryOperatorsDir() string              { return filepath.Join(memoryDir, "operators") }
+func listOperators() ([]string, error)        { return listMemoryFiles(memoryOperatorsDir()) }
+func getOperator(name string) (string, error) { return getMemoryFile(memoryOperatorsDir(), name) }
+func saveOperator(name, content string) error { return saveMemoryFile(memoryOperatorsDir(), name, content) }
+func deleteOperator(name string) error        { return deleteMemoryFile(memoryOperatorsDir(), name) }

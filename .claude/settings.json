@@ -1,6 +1,14 @@
 {
   "permissions": {
     "allow": [
+      "Bash(echo not found or invalid:*)",
+      "Bash(git commit:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(pkill:*)",
+      "Bash(python3)",
       "Bash(go build*)",
       "Bash(go run*)",
       "Bash(go vet*)",
@@ -28,7 +36,9 @@
       "WebSearch",
       "WebFetch(domain:v3.shadcn-vue.com)",
       "WebFetch(domain:www.shadcn-vue.com)",
-      "mcp__playwright"
+      "mcp__playwright",
+      "Edit",
+      "Write"
     ]
   },
   "enabledPlugins": {

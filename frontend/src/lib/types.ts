@@ -9,6 +9,7 @@ export interface ChatSettings {
   windowSize?: number
   profile?: string
   project?: string
+  operator?: string
 }
 
 export interface MemoryFile {
@@ -137,4 +138,5 @@ export type SSEEvent =
   | CompressEvent
   | FactsUpdatedEvent
   | ApiRequestEvent
+  | { type: 'memory_updated' }
   | { type: 'text'; Text: string }

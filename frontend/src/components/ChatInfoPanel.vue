@@ -184,10 +184,14 @@ watch(() => chat.messages.length, () => {
         </div>
 
         <!-- Memory -->
-        <div v-if="chat.settings?.profile || chat.settings?.project" class="space-y-2">
+        <div v-if="chat.settings?.operator || chat.settings?.profile || chat.settings?.project" class="space-y-2">
           <div class="border-t border-primary/10 my-2" />
           <div class="text-xs font-medium text-primary uppercase tracking-wider">
             // memory
+          </div>
+          <div v-if="chat.settings?.operator" class="flex justify-between">
+            <span class="text-muted-foreground">operator</span>
+            <span class="text-yellow-400">{{ chat.settings.operator }}</span>
           </div>
           <div v-if="chat.settings.profile" class="flex justify-between">
             <span class="text-muted-foreground">profile</span>

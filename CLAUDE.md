@@ -21,13 +21,14 @@ See `TASKS.md` for all daily assignments and their status.
 - `strategy_window.go` — sliding window strategy: keep last N messages
 - `strategy_facts.go` — sticky facts strategy: extract key-value facts after each exchange
 - `strategy_branch.go` — branching strategy: fork conversations into named branches
-- `memory.go` — memory layer CRUD (profiles + projects as .md files in `.memory/`)
+- `memory.go` — memory layer CRUD (profiles + projects + operators as .md files in `.memory/`)
+- `memory_update.go` — auto-update profile/project memory via LLM after each exchange
 
 ### Vue frontend (`frontend/`)
 - `src/App.vue` — layout: sidebar + chat
 - `src/stores/chat.ts` — Pinia: messages, streaming, tokens
 - `src/stores/sessions.ts` — Pinia: session list, load/delete
-- `src/stores/memory.ts` — Pinia: profiles/projects lists, CRUD
+- `src/stores/memory.ts` — Pinia: profiles/projects/operators lists, CRUD
 - `src/composables/useSSE.ts` — fetch + ReadableStream SSE parser
 - `src/stores/ui.ts` — Pinia: UI state (right panel, server config)
 - `src/components/` — ChatWindow, MessageBubble, ToolCallCard, ChatInput, TokenBar, SessionPanel, ChatInfoPanel, NewChatDialog, BranchSelector, MemoryEditorDialog
@@ -40,7 +41,7 @@ See `TASKS.md` for all daily assignments and their status.
 - `TASKS.md` — daily task log (assignments, status, notes)
 - `.env` — stores `ANTHROPIC_API_KEY` (not committed)
 - `.chat_history/` — saved chat sessions (not committed)
-- `.memory/` — memory layers: `profiles/` (long-term) + `projects/` (working), .md files (not committed)
+- `.memory/` — memory layers: `profiles/` (long-term) + `projects/` (working) + `operators/` (immutable user identity), .md files (not committed)
 - `.claude/agents/` — sub-agent configs: `go.md` (backend, sonnet), `frontend.md` (Vue/TS, sonnet), `qa.md` (tester, haiku)
 
 ## How to run
@@ -121,8 +122,8 @@ go run . --server
 - **Streaming**: uses SSE (`stream: true`); CLI renders via `cliTokenWriter`, HTTP sends SSE events to browser
 - **Format injection**: `--format` value is appended to system prompt as `"Always respond in this format: <value>"`
 - **Context strategies**: pluggable via `strategy.go` dispatcher. Summary (default, rolling compression), Window (last N messages), Facts (extract key-value facts + last N), Branch (fork conversations). Strategy selected at chat creation, persisted in session settings.
-- **HTTP API**: POST `/api/chat` (SSE stream, unified agent endpoint with tools), GET/DELETE `/api/sessions[/:name]`, GET `/api/sessions/:name/raw`, POST/GET `/api/sessions/:name/branches`, PUT `/api/sessions/:name/branch`, GET/POST `/api/memory/profiles`, GET/PUT/DELETE `/api/memory/profiles/:name`, GET/POST `/api/memory/projects`, GET/PUT/DELETE `/api/memory/projects/:name`
-- **Memory model**: 3 layers — short-term (chat messages), working (`.memory/projects/*.md`), long-term (`.memory/profiles/*.md`). Profile and project selected at chat creation, injected into system prompt via `buildFullSystemPrompt()`. Persisted in `sessionSettings`.
+- **HTTP API**: POST `/api/chat` (SSE stream, unified agent endpoint with tools), GET/DELETE `/api/sessions[/:name]`, GET `/api/sessions/:name/raw`, POST/GET `/api/sessions/:name/branches`, PUT `/api/sessions/:name/branch`, GET/POST `/api/memory/profiles`, GET/PUT/DELETE `/api/memory/profiles/:name`, GET/POST `/api/memory/projects`, GET/PUT/DELETE `/api/memory/projects/:name`, GET/POST `/api/memory/operators`, GET/PUT/DELETE `/api/memory/operators/:name`
+- **Memory model**: 4 layers — short-term (chat messages), working (`.memory/projects/*.md`), long-term (`.memory/profiles/*.md`), operator (`.memory/operators/*.md`, immutable). Operator → profile → project → system prompt order in `buildFullSystemPrompt()`. Profile/project auto-updated via `maybeUpdateMemory()` (Haiku) after each exchange. Persisted in `sessionSettings`.
 
 ## Dev workflow (autonomous)
 

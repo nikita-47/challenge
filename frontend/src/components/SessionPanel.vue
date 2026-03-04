@@ -4,7 +4,7 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useMemoryStore } from '@/stores/memory'
 import { useChatStore } from '@/stores/chat'
 import { useUIStore } from '@/stores/ui'
-import { fetchProfile, fetchProject, updateProfile, updateProject } from '@/lib/api'
+import { fetchProfile, fetchProject, fetchOperator, updateProfile, updateProject, updateOperator } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import MemoryEditorDialog from '@/components/MemoryEditorDialog.vue'
@@ -58,11 +58,11 @@ function cancelEdit() {
 // Memory editor state
 const editorOpen = ref(false)
 const editorMode = ref<'create' | 'edit'>('create')
-const editorKind = ref<'profile' | 'project'>('profile')
+const editorKind = ref<'profile' | 'project' | 'operator'>('profile')
 const editorName = ref('')
 const editorContent = ref('')
 
-function openCreateDialog(kind: 'profile' | 'project') {
+function openCreateDialog(kind: 'profile' | 'project' | 'operator') {
   editorKind.value = kind
   editorMode.value = 'create'
   editorName.value = ''
@@ -70,12 +70,12 @@ function openCreateDialog(kind: 'profile' | 'project') {
   editorOpen.value = true
 }
 
-async function openEditDialog(kind: 'profile' | 'project', name: string) {
+async function openEditDialog(kind: 'profile' | 'project' | 'operator', name: string) {
   editorKind.value = kind
   editorMode.value = 'edit'
   editorName.value = name
   try {
-    const fetcher = kind === 'profile' ? fetchProfile : fetchProject
+    const fetcher = kind === 'profile' ? fetchProfile : kind === 'project' ? fetchProject : fetchOperator
     const data = await fetcher(name)
     editorContent.value = data.content
   } catch {
@@ -88,23 +88,29 @@ async function handleEditorSave(name: string, content: string) {
   if (editorMode.value === 'create') {
     if (editorKind.value === 'profile') {
       await memory.addProfile(name, content)
-    } else {
+    } else if (editorKind.value === 'project') {
       await memory.addProject(name, content)
+    } else {
+      await memory.addOperator(name, content)
     }
   } else {
     if (editorKind.value === 'profile') {
       await updateProfile(name, content)
-    } else {
+    } else if (editorKind.value === 'project') {
       await updateProject(name, content)
+    } else {
+      await updateOperator(name, content)
     }
   }
 }
 
-async function handleDelete(kind: 'profile' | 'project', name: string) {
+async function handleDelete(kind: 'profile' | 'project' | 'operator', name: string) {
   if (kind === 'profile') {
     await memory.removeProfile(name)
-  } else {
+  } else if (kind === 'project') {
     await memory.removeProject(name)
+  } else {
+    await memory.removeOperator(name)
   }
 }
 
@@ -179,7 +185,8 @@ watch(tab, (v) => {
             />
             <div v-else class="min-w-0 flex-1" @dblclick.stop="startEdit(s.name)">
               <div class="truncate">{{ s.name }}</div>
-              <div v-if="s.profile || s.project" class="flex gap-1 mt-0.5">
+              <div v-if="s.operator || s.profile || s.project" class="flex gap-1 mt-0.5">
+                <span v-if="s.operator" class="text-[10px] text-yellow-400/60 border border-yellow-400/20 px-1 leading-tight">{{ s.operator }}</span>
                 <span v-if="s.profile" class="text-[10px] text-primary/60 border border-primary/20 px-1 leading-tight">{{ s.profile }}</span>
                 <span v-if="s.project" class="text-[10px] text-accent-foreground/60 border border-accent-foreground/20 px-1 leading-tight">{{ s.project }}</span>
               </div>
@@ -205,6 +212,36 @@ watch(tab, (v) => {
     <!-- Memory tab -->
     <ScrollArea v-else class="flex-1">
       <div class="p-3 space-y-3 text-sm">
+        <!-- Operators -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <div class="text-xs font-medium text-primary uppercase tracking-wider">
+              // operators
+            </div>
+            <button
+              class="text-xs text-primary hover:text-accent-foreground"
+              @click="openCreateDialog('operator')"
+            >+</button>
+          </div>
+          <div v-if="memory.operators.length === 0" class="text-xs text-muted-foreground">
+            No operators yet.
+          </div>
+          <div
+            v-for="p in memory.operators"
+            :key="p"
+            class="flex items-center justify-between text-xs bg-background border border-border p-1.5 cursor-pointer hover:border-primary/30"
+            @click="openEditDialog('operator', p)"
+          >
+            <span class="text-foreground">{{ p }}</span>
+            <button
+              class="text-muted-foreground hover:text-destructive ml-2"
+              @click.stop="handleDelete('operator', p)"
+            >&times;</button>
+          </div>
+        </div>
+
+        <div class="border-t border-primary/10 my-2" />
+
         <!-- Profiles -->
         <div class="space-y-2">
           <div class="flex items-center justify-between">

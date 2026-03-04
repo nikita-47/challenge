@@ -47,6 +47,7 @@ const memory = useMemoryStore()
 const NONE = '__none__'
 
 const chatName = ref('')
+const operator = ref(NONE)
 const profile = ref(NONE)
 const project = ref(NONE)
 const model = ref('')
@@ -66,6 +67,7 @@ watch(() => ui.newChatDialogOpen, (open) => {
     system.value = ui.config?.system ?? ''
     strategy.value = 'summary'
     windowSize.value = 10
+    operator.value = NONE
     profile.value = NONE
     project.value = NONE
     memory.loadAll()
@@ -80,6 +82,7 @@ function confirm() {
     system: system.value,
     strategy: strategy.value,
     windowSize: strategy.value !== 'branch' ? windowSize.value : undefined,
+    operator: operator.value !== NONE ? operator.value : undefined,
     profile: profile.value !== NONE ? profile.value : undefined,
     project: project.value !== NONE ? project.value : undefined,
   }
@@ -104,6 +107,21 @@ function confirm() {
             v-model="chatName"
             placeholder="Auto-generated if empty"
           />
+        </div>
+
+        <div v-if="memory.operators.length > 0" class="space-y-2">
+          <Label>Operator (user identity)</Label>
+          <Select v-model="operator">
+            <SelectTrigger>
+              <SelectValue placeholder="None" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem :value="NONE">None</SelectItem>
+              <SelectItem v-for="p in memory.operators" :key="p" :value="p">
+                {{ p }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div v-if="memory.profiles.length > 0" class="space-y-2">

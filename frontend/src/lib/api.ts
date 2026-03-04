@@ -2,6 +2,7 @@ export interface SessionInfo {
   name: string
   profile?: string
   project?: string
+  operator?: string
 }
 
 export async function fetchSessions(): Promise<SessionInfo[]> {
@@ -188,6 +189,58 @@ export async function deleteProjectAPI(name: string) {
   })
   if (!resp.ok) {
     throw new Error(`Failed to delete project: ${resp.statusText}`)
+  }
+}
+
+// ─── Operator Memory API ─────────────────────────────────────────────────────
+
+export async function fetchOperators(): Promise<string[]> {
+  const resp = await fetch('/api/memory/operators')
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch operators: ${resp.statusText}`)
+  }
+  const data = await resp.json()
+  return data ?? []
+}
+
+export async function fetchOperator(name: string): Promise<{ name: string; content: string }> {
+  const resp = await fetch(`/api/memory/operators/${encodeURIComponent(name)}`)
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch operator: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function createOperator(name: string, content: string) {
+  const resp = await fetch('/api/memory/operators', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, content }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to create operator: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function updateOperator(name: string, content: string) {
+  const resp = await fetch(`/api/memory/operators/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to update operator: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function deleteOperatorAPI(name: string) {
+  const resp = await fetch(`/api/memory/operators/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to delete operator: ${resp.statusText}`)
   }
 }
 

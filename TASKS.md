@@ -274,6 +274,28 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 13 — Assistant Personalization ✅
+
+**Assignment:** Add operator memory layer (immutable user identity, first in system prompt), auto-update profile/project memory via LLM after each exchange, full operator CRUD in UI.
+
+**What was built on top of Day 12:**
+- `memory_update.go` — new file: `maybeUpdateMemory()` analyzes last user+assistant exchange, calls Haiku to decide if profile/project memory needs updating; `analyzeMemoryUpdate()` non-streaming API call with memory-manager system prompt
+- `memory.go` — added operator CRUD helpers: `memoryOperatorsDir()`, `listOperators()`, `getOperator()`, `saveOperator()`, `deleteOperator()`
+- `api.go` — operator injected FIRST in `buildFullSystemPrompt()` (before profile)
+- `history.go` — `Operator` field in `sessionSettings` and `sessionInfo`, exposed in `listSessions()`
+- `server.go` — `/api/memory/operators` CRUD endpoints, `Operator` in `chatRequest`, `maybeUpdateMemory()` call after each exchange with `memory_updated` SSE event
+- `frontend/src/lib/api.ts` — full operator API: `fetchOperators`, `fetchOperator`, `createOperator`, `updateOperator`, `deleteOperatorAPI`
+- `frontend/src/stores/memory.ts` — `operators` state, `loadOperators()`, `addOperator()`, `removeOperator()`
+- `frontend/src/components/NewChatDialog.vue` — operator select dropdown (before profile)
+- `frontend/src/components/SessionPanel.vue` — operator CRUD in memory tab, operator badge in session list
+- `frontend/src/components/ChatInfoPanel.vue` — operator display in memory section
+- `frontend/src/components/MemoryEditorDialog.vue` — extended `kind` type with `'operator'`
+- `.claude/agents/*.md` — added `description` field to all sub-agents
+
+**Key code:** `maybeUpdateMemory()`, `analyzeMemoryUpdate()`, `memoryOperatorsDir()`, operator CRUD, `memory_updated` SSE event
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

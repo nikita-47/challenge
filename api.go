@@ -97,6 +97,11 @@ type modelInfo struct {
 func buildFullSystemPrompt(cfg config, settings *sessionSettings) string {
 	var sections []string
 
+	if settings != nil && settings.Operator != "" {
+		if content, err := getOperator(settings.Operator); err == nil && content != "" {
+			sections = append(sections, "# Operator\n\n"+content)
+		}
+	}
 	if settings != nil && settings.Profile != "" {
 		if content, err := getProfile(settings.Profile); err == nil && content != "" {
 			sections = append(sections, "# Profile\n\n"+content)

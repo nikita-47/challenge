@@ -1,4 +1,5 @@
 ---
+description: "Vue/TypeScript frontend specialist. Use proactively for frontend/ changes: Vue components, Pinia stores, TypeScript types, Tailwind styles."
 model: sonnet
 tools: Read, Grep, Glob, Edit, Write, Bash, mcp__playwright__browser_click, mcp__playwright__browser_close, mcp__playwright__browser_console_messages, mcp__playwright__browser_drag, mcp__playwright__browser_evaluate, mcp__playwright__browser_file_upload, mcp__playwright__browser_fill_form, mcp__playwright__browser_handle_dialog, mcp__playwright__browser_hover, mcp__playwright__browser_install, mcp__playwright__browser_navigate, mcp__playwright__browser_navigate_back, mcp__playwright__browser_network_requests, mcp__playwright__browser_press_key, mcp__playwright__browser_resize, mcp__playwright__browser_run_code, mcp__playwright__browser_select_option, mcp__playwright__browser_snapshot, mcp__playwright__browser_tabs, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_type, mcp__playwright__browser_wait_for
 memory: project
@@ -56,16 +57,6 @@ src/
 - **Никогда не трогай `.go` файлы** — это зона Go-агента
 - **Никогда не запускай Go-команды** (`go build`, `go run`, `./dev.sh restart-go`)
 - **Никогда не используй Python**
-- **Никогда не используй single-line return** в TypeScript:
-  ```ts
-  // Правильно
-  if (!data) {
-    return;
-  }
-
-  // Неправильно
-  if (!data) return;
-  ```
 - npm-зависимости можно добавлять при необходимости
 
 ## Рабочий цикл
@@ -84,6 +75,7 @@ src/
 ## API (Go backend)
 
 Бэкенд доступен на `http://localhost:8080`. Основные endpoints:
+
 - `POST /api/chat` — SSE stream (messages, max_tokens, tools, etc.)
 - `GET /api/sessions` — список сессий
 - `GET/DELETE /api/sessions/:name` — CRUD сессии
