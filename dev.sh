@@ -25,7 +25,7 @@ start_go() {
         echo "Go server already running on port $GO_PORT (PID: $pids)"
         return
     fi
-    go run . --server --port $GO_PORT &
+    go run ./backend --server --port $GO_PORT &
     echo "Go server starting on port $GO_PORT"
 }
 
@@ -85,7 +85,7 @@ start_go_test() {
         echo "Go server already running on port $GO_PORT (PID: $pids)"
         return
     fi
-    go run . --server --port $GO_PORT --base-url "http://localhost:$LMS_PORT" --model "$LMS_MODEL" &
+    go run ./backend --server --port $GO_PORT --base-url "http://localhost:$LMS_PORT" --model "$LMS_MODEL" &
     echo "Go server starting on port $GO_PORT (base-url: localhost:$LMS_PORT, model: $LMS_MODEL)"
 }
 

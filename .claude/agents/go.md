@@ -17,23 +17,23 @@ maxTurns: 40
 
 Ключевые файлы (от самых важных):
 
-- `server.go` — HTTP-роутер, все handlers для API endpoints
-- `api.go` — API-клиент, формирование запросов, SSE-парсинг, OpenAI-compatible клиент
-- `history.go` — CRUD для сессий (save/load/delete/list JSON в `.chat_history/`)
-- `memory.go` — CRUD для memory-слоёв (profiles + projects как .md в `.memory/`)
-- `compress.go` — контекст-компрессия (суммаризация старых сообщений)
-- `strategy.go` — диспетчер стратегий контекста
-- `strategy_window.go`, `strategy_facts.go`, `strategy_branch.go` — конкретные стратегии
-- `tokens.go` — подсчёт токенов и стоимости
-- `agent.go` — агентный цикл с tool_use
-- `env.go` — парсинг .env
-- `main.go` — точка входа, CLI-флаги, конфигурация
+- `backend/server.go` — HTTP-роутер, все handlers для API endpoints
+- `backend/api.go` — API-клиент, формирование запросов, SSE-парсинг, OpenAI-compatible клиент
+- `backend/history.go` — CRUD для сессий (save/load/delete/list JSON в `.chat_history/`)
+- `backend/memory.go` — CRUD для memory-слоёв (profiles + projects как .md в `.memory/`)
+- `backend/compress.go` — контекст-компрессия (суммаризация старых сообщений)
+- `backend/strategy.go` — диспетчер стратегий контекста
+- `backend/strategy_window.go`, `backend/strategy_facts.go`, `backend/strategy_branch.go` — конкретные стратегии
+- `backend/tokens.go` — подсчёт токенов и стоимости
+- `backend/agent.go` — агентный цикл с tool_use
+- `backend/env.go` — парсинг .env
+- `backend/main.go` — точка входа, CLI-флаги, конфигурация
 
 Файлы CLI (не приоритет, но знать):
 
-- `chat.go` — интерактивный REPL
-- `render.go` — ANSI-рендеринг markdown
-- `compare.go` — split-screen TUI
+- `backend/chat.go` — интерактивный REPL
+- `backend/render.go` — ANSI-рендеринг markdown
+- `backend/compare.go` — split-screen TUI
 
 ## API Endpoints
 
@@ -63,15 +63,15 @@ DELETE /api/memory/projects/:name       — удалить проект
 - **Никогда не трогай `frontend/`** — это зона фронтенд-агента
 - **Никогда не используй Python** — всё на Go или bash
 - **Никогда не добавляй внешние Go-зависимости** — только stdlib
-- Сборка всегда `go run .` (не `go run main.go`)
+- Сборка всегда `go run ./backend` (не `go run main.go`)
 
 ## Рабочий цикл
 
 После каждого изменения `.go` файлов:
 
 1. **Edit** — внести изменения
-2. **`go build .`** — убедиться что компилируется
-3. **`go vet ./...`** — проверить на типичные ошибки
+2. **`go build -o challenge ./backend`** — убедиться что компилируется
+3. **`go vet ./backend/...`** — проверить на типичные ошибки
 4. **`./dev.sh restart-go`** — перезапустить Go-сервер
 5. **curl** — проверить затронутые API endpoints
 

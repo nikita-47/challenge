@@ -1,28 +1,28 @@
-# AI Challenge — CLI Chat with Claude
+# AI Challenge — Chat with Claude
 
 30-day AI challenge. Each day builds a new feature on top of the previous one.
 See `TASKS.md` for all daily assignments and their status.
 
 ## Project structure
 
-### Go backend
-- `main.go` — app entry, CLI flags, config, banner, help
-- `chat.go` — interactive chat REPL loop + CLI emit helpers (`cliAgentEmit`, `cliTokenWriter`)
-- `api.go` — API client, request building, SSE streaming, OpenAI-compatible client
-- `server.go` — HTTP server with SSE endpoints for Vue frontend
-- `tokens.go` — token usage tracking and cost calculation
-- `render.go` — ANSI markdown rendering (CLI only)
-- `env.go` — .env file loader
-- `compare.go` — split-screen TUI, panel rendering, comparison orchestrator
-- `agent.go` — agentic loop with tool_use (run_shell, read_file), `AgentEvent` type
-- `history.go` — session persistence (save/load/delete/list JSON)
-- `compress.go` — context compression: summarize old messages, keep recent N as-is
-- `strategy.go` — context strategy dispatcher (summary, window, facts, branch)
-- `strategy_window.go` — sliding window strategy: keep last N messages
-- `strategy_facts.go` — sticky facts strategy: extract key-value facts after each exchange
-- `strategy_branch.go` — branching strategy: fork conversations into named branches
-- `memory.go` — memory layer CRUD (profiles + projects + operators as .md files in `.memory/`)
-- `memory_update.go` — auto-update profile/project memory via LLM after each exchange
+### Go backend (`backend/`)
+- `backend/main.go` — app entry, CLI flags, config, banner, help
+- `backend/chat.go` — interactive chat REPL loop + CLI emit helpers (`cliAgentEmit`, `cliTokenWriter`)
+- `backend/api.go` — API client, request building, SSE streaming, OpenAI-compatible client
+- `backend/server.go` — HTTP server with SSE endpoints for Vue frontend
+- `backend/tokens.go` — token usage tracking and cost calculation
+- `backend/render.go` — ANSI markdown rendering (CLI only)
+- `backend/env.go` — .env file loader
+- `backend/compare.go` — split-screen TUI, panel rendering, comparison orchestrator
+- `backend/agent.go` — agentic loop with tool_use (run_shell, read_file), `AgentEvent` type
+- `backend/history.go` — session persistence (save/load/delete/list JSON)
+- `backend/compress.go` — context compression: summarize old messages, keep recent N as-is
+- `backend/strategy.go` — context strategy dispatcher (summary, window, facts, branch)
+- `backend/strategy_window.go` — sliding window strategy: keep last N messages
+- `backend/strategy_facts.go` — sticky facts strategy: extract key-value facts after each exchange
+- `backend/strategy_branch.go` — branching strategy: fork conversations into named branches
+- `backend/memory.go` — memory layer CRUD (profiles + projects + operators as .md files in `.memory/`)
+- `backend/memory_update.go` — auto-update profile/project memory via LLM after each exchange
 
 ### Vue frontend (`frontend/`)
 - `src/App.vue` — layout: sidebar + chat
@@ -46,11 +46,26 @@ See `TASKS.md` for all daily assignments and their status.
 
 ## How to run
 
-```
-go run . [flags]
+### Server mode (Vue UI) — primary
+
+```bash
+# Dev: run Go backend + Vite dev server
+./dev.sh start
+# Open http://localhost:5173
+
+# Production: build frontend, Go serves static + API
+cd frontend && npm run build
+go run ./backend --server
+# Open http://localhost:8080
 ```
 
-> Note: always `go run .` (not `go run main.go`) — the project spans multiple files.
+### CLI mode
+
+```
+go run ./backend [flags]
+```
+
+> Note: `go.mod` lives in the project root. All relative paths (.env, .chat_history, .memory, frontend/dist) resolve from CWD (project root), not from `backend/`.
 
 ### CLI flags
 
@@ -65,7 +80,6 @@ go run . [flags]
 | `--session string` | — | Session name for chat history persistence |
 | `--base-url string` | — | OpenAI-compatible base URL (e.g. `http://localhost:1234`) |
 | `--model string` | — | Model name for OpenAI-compatible API |
-
 | `--strategy string` | summary | Context strategy (summary, window, facts, branch) |
 | `--window-size int` | 20 | Window size for window/facts strategies |
 | `--server` | false | Start HTTP server with Vue UI |
@@ -73,20 +87,7 @@ go run . [flags]
 
 Example:
 ```
-go run . --max-tokens 200 --format "bullet points" --stop "END"
-```
-
-### Server mode (Vue UI)
-
-```
-# Dev: run Go backend + Vite dev server separately
-go run . --server --port 8080
-cd frontend && npm run dev     # Vite on :5173, proxies /api → :8080
-
-# Production: build frontend, Go serves static + API
-cd frontend && npm run build
-go run . --server
-# Open http://localhost:8080
+go run ./backend --max-tokens 200 --format "bullet points" --stop "END"
 ```
 
 ### Chat commands
@@ -111,7 +112,7 @@ go run . --server
 
 ## Key decisions
 
-- **File layout**: `main.go` (entry/CLI), `chat.go` (REPL), `api.go` (API client), `server.go` (HTTP/SSE), `render.go` (markdown), `env.go` (.env), `compare.go` (TUI), `agent.go` (agent), `history.go` (sessions), `compress.go` (context compression)
+- **File layout**: `backend/` (all Go files), `frontend/` (Vue app), `go.mod` in project root
 - **No external deps in Go**: uses only Go stdlib (net/http, encoding/json, etc.)
 - **Frontend stack**: Vue 3 + Vite + Tailwind CSS v4 + Pinia + marked + shadcn-vue (radix-vue, class-variance-authority)
 - **IO decoupling**: `readStream()` and `Agent.Run()` accept callbacks (`onToken func(string)` / `emit func(AgentEvent)`), CLI and HTTP use different implementations
@@ -121,7 +122,7 @@ go run . --server
 - **System events**: stored inline in messages array as `role: "system"` with `event` field (`messageEvent` in Go, `SystemEvent` in TS). Used for compression notifications; extensible for future event types. Filtered out before sending to Claude API via `filterAPIMessages()`.
 - **Streaming**: uses SSE (`stream: true`); CLI renders via `cliTokenWriter`, HTTP sends SSE events to browser
 - **Format injection**: `--format` value is appended to system prompt as `"Always respond in this format: <value>"`
-- **Context strategies**: pluggable via `strategy.go` dispatcher. Summary (default, rolling compression), Window (last N messages), Facts (extract key-value facts + last N), Branch (fork conversations). Strategy selected at chat creation, persisted in session settings.
+- **Context strategies**: pluggable via `backend/strategy.go` dispatcher. Summary (default, rolling compression), Window (last N messages), Facts (extract key-value facts + last N), Branch (fork conversations). Strategy selected at chat creation, persisted in session settings.
 - **HTTP API**: POST `/api/chat` (SSE stream, unified agent endpoint with tools), GET/DELETE `/api/sessions[/:name]`, GET `/api/sessions/:name/raw`, POST/GET `/api/sessions/:name/branches`, PUT `/api/sessions/:name/branch`, GET/POST `/api/memory/profiles`, GET/PUT/DELETE `/api/memory/profiles/:name`, GET/POST `/api/memory/projects`, GET/PUT/DELETE `/api/memory/projects/:name`, GET/POST `/api/memory/operators`, GET/PUT/DELETE `/api/memory/operators/:name`
 - **Memory model**: 4 layers — short-term (chat messages), working (`.memory/projects/*.md`), long-term (`.memory/profiles/*.md`), operator (`.memory/operators/*.md`, immutable). Operator → profile → project → system prompt order in `buildFullSystemPrompt()`. Profile/project auto-updated via `maybeUpdateMemory()` (Haiku) after each exchange. Persisted in `sessionSettings`.
 
@@ -154,7 +155,7 @@ Dev servers should be running throughout the session. Start once at the beginnin
 ### Build & type check
 Run before browser testing:
 ```bash
-go build .                           # Go compilation
+go build -o challenge ./backend      # Go compilation
 cd frontend && npx vue-tsc --noEmit  # TypeScript check
 ```
 
