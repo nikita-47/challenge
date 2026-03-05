@@ -1,5 +1,27 @@
 export type ContextStrategy = 'summary' | 'window' | 'facts' | 'branch'
 
+// ─── Task State Machine ─────────────────────────────────────────────────────
+
+export type TaskPhase = 'planning' | 'executing' | 'validating' | 'done' | 'paused'
+export type TaskStepStatus = 'pending' | 'in_progress' | 'completed' | 'failed'
+
+export interface TaskStep {
+  index: number
+  description: string
+  status: TaskStepStatus
+  result?: string
+}
+
+export interface TaskState {
+  goal: string
+  phase: TaskPhase
+  steps: TaskStep[]
+  current_step: number
+  expected_action?: string
+  paused_at_phase?: string
+  error?: string
+}
+
 export interface ChatSettings {
   model: string
   temperature: number
@@ -126,6 +148,11 @@ export interface ApiRequestEvent {
   text: string
 }
 
+export interface TaskStateEvent {
+  type: 'task_state'
+  text: string
+}
+
 export type SSEEvent =
   | TextDeltaEvent
   | UsageEvent
@@ -138,5 +165,6 @@ export type SSEEvent =
   | CompressEvent
   | FactsUpdatedEvent
   | ApiRequestEvent
+  | TaskStateEvent
   | { type: 'memory_updated' }
   | { type: 'text'; Text: string }

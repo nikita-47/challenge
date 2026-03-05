@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatMessage, ToolCall, TokenUsage, ChatSettings, BranchInfo } from '@/lib/types'
+import type { ChatMessage, ToolCall, TokenUsage, ChatSettings, BranchInfo, TaskState } from '@/lib/types'
 import { streamRequest } from '@/composables/useSSE'
 
 export const useChatStore = defineStore('chat', () => {
@@ -18,6 +18,7 @@ export const useChatStore = defineStore('chat', () => {
   const facts = ref<Record<string, string>>({})
   const branches = ref<BranchInfo[]>([])
   const activeBranch = ref('main')
+  const taskState = ref<TaskState | null>(null)
 
   let abortController: AbortController | null = null
 
@@ -42,6 +43,7 @@ export const useChatStore = defineStore('chat', () => {
     facts.value = {}
     branches.value = []
     activeBranch.value = 'main'
+    taskState.value = null
   }
 
   const tokensSaved = ref(0)
@@ -82,6 +84,7 @@ export const useChatStore = defineStore('chat', () => {
     const body = {
       message: text,
       session: currentSession.value,
+      ...(taskState.value && { taskMode: true }),
       ...(settings.value && {
         model: settings.value.model,
         system: settings.value.system,
@@ -179,6 +182,14 @@ export const useChatStore = defineStore('chat', () => {
             facts.value = event.facts
             break
 
+          case 'task_state':
+            try {
+              taskState.value = JSON.parse(event.text)
+            } catch {
+              // ignore parse errors
+            }
+            break
+
           case 'memory_updated':
             break
 
@@ -220,6 +231,27 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  function startTask(goal: string) {
+    taskState.value = {
+      goal,
+      phase: 'planning',
+      steps: [],
+      current_step: 0,
+    }
+    sendMessage(goal)
+  }
+
+  function pauseTask() {
+    stopStreaming()
+  }
+
+  function resumeTask() {
+    if (!taskState.value || taskState.value.phase === 'done') {
+      return
+    }
+    sendMessage('Continue the task')
+  }
+
   return {
     messages,
     isStreaming,
@@ -242,5 +274,9 @@ export const useChatStore = defineStore('chat', () => {
     facts,
     branches,
     activeBranch,
+    taskState,
+    startTask,
+    pauseTask,
+    resumeTask,
   }
 })

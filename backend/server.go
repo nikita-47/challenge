@@ -161,6 +161,7 @@ type chatRequest struct {
 	Profile     string  `json:"profile"`
 	Project     string  `json:"project"`
 	Operator    string  `json:"operator"`
+	TaskMode    bool    `json:"taskMode"`
 }
 
 func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
@@ -243,11 +244,31 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 
 	compressed := buildAPIMessages(cw)
 
-	agent := newAgent(apiKey, cfg)
+	// Decide whether to use task mode agent.
+	isTaskMode := req.TaskMode || (cw.TaskState != nil && cw.TaskState.Phase != PhaseDone)
+	var agent *Agent
+	if isTaskMode {
+		if cw.TaskState == nil {
+			cw.TaskState = &TaskState{
+				Goal:  req.Message,
+				Phase: PhasePlanning,
+			}
+		}
+		agent = newAgentWithTaskState(apiKey, cfg, cw.TaskState)
+	} else {
+		agent = newAgent(apiKey, cfg)
+	}
+
 	result, err := agent.Run(req.Message, compressed, emit)
+	agent.Cleanup()
 	if err != nil {
 		sseWrite(w, map[string]any{"type": "error", "message": err.Error()})
 		// Don't return — still save messages and run memory update.
+	}
+
+	// Persist task state from agent back to session.
+	if agent.TaskState != nil {
+		cw.TaskState = agent.TaskState
 	}
 
 	// Accumulate agent stats into session lifetime stats.
@@ -323,8 +344,7 @@ func handleGetSession(w http.ResponseWriter, r *http.Request, name string) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	resp := map[string]any{
 		"messages":     activeMessages(cw),
 		"summary":      cw.Summary,
 		"settings":     cw.Settings,
@@ -332,7 +352,12 @@ func handleGetSession(w http.ResponseWriter, r *http.Request, name string) {
 		"facts":        cw.Facts,
 		"branches":     branchInfos,
 		"activeBranch": cw.ActiveBranch,
-	})
+	}
+	if cw.TaskState != nil {
+		resp["taskState"] = cw.TaskState
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 }
 
 // ─── GET /api/sessions/:name/raw ─────────────────────────────────────────────

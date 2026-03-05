@@ -62,6 +62,18 @@ func cliAgentEmit(ev AgentEvent) {
 		fmt.Fprintf(os.Stderr, "\033[31m[Agent] Error: %s\033[0m\n", ev.Text)
 	case "text":
 		fmt.Printf("\033[1m[Agent] Goal: %s\033[0m\n", ev.Text)
+	case "task_state":
+		var ts TaskState
+		if json.Unmarshal([]byte(ev.Text), &ts) == nil {
+			fmt.Printf("\033[36m[Task] Phase: %s", ts.Phase)
+			if len(ts.Steps) > 0 {
+				fmt.Printf(" | Steps: %d/%d", ts.completedCount(), len(ts.Steps))
+			}
+			if ts.ExpectedAction != "" {
+				fmt.Printf(" | Next: %s", ts.ExpectedAction)
+			}
+			fmt.Printf("\033[0m\n")
+		}
 	}
 }
 
@@ -169,6 +181,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			task := strings.TrimPrefix(input, "/agent ")
 			agent := newAgentWithTools(apiKey, cfg)
 			result, err := agent.Run(task, cw.Messages, cliAgentEmit)
+			agent.Cleanup()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Agent error: %v\n\n", err)
 			} else {
@@ -189,6 +202,77 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			stats.TotalInput += agent.Stats.TotalInput
 			stats.TotalOutput += agent.Stats.TotalOutput
 			stats.Exchanges += agent.Stats.Exchanges
+			continue
+		case input == "/task":
+			if cw.TaskState == nil {
+				fmt.Println("No active task. Use /task <goal> to start one.")
+			} else {
+				fmt.Println(cw.TaskState.FormatStatus())
+			}
+			fmt.Println()
+			continue
+		case strings.HasPrefix(input, "/task "):
+			goal := strings.TrimPrefix(input, "/task ")
+			cw.TaskState = &TaskState{Goal: goal, Phase: PhasePlanning}
+			agent := newAgentWithTaskState(apiKey, cfg, cw.TaskState)
+			result, err := agent.Run(goal, cw.Messages, cliAgentEmit)
+			agent.Cleanup()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Task error: %v\n\n", err)
+			} else {
+				fmt.Print("Claude: ")
+				fmt.Println(renderMarkdown(result))
+				fmt.Println()
+			}
+			cw.TaskState = agent.TaskState
+			appendMessage(cw, message{Role: "user", Content: goal})
+			appendMessage(cw, message{Role: "assistant", Content: result})
+			stats.TotalInput += agent.Stats.TotalInput
+			stats.TotalOutput += agent.Stats.TotalOutput
+			stats.Exchanges += agent.Stats.Exchanges
+			cw.Stats = statsFromToken(stats)
+			if err := saveSessionCW(sessionName, cw); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to auto-save session: %v\n", err)
+			}
+			continue
+		case input == "/resume":
+			if cw.TaskState == nil {
+				fmt.Println("No task to resume.")
+				fmt.Println()
+				continue
+			}
+			if cw.TaskState.Phase == PhaseDone {
+				fmt.Println("Task already completed.")
+				fmt.Println()
+				continue
+			}
+			if cw.TaskState.Phase == PhasePaused {
+				cw.TaskState.Phase = cw.TaskState.PausedAtPhase
+				if cw.TaskState.Phase == "" {
+					cw.TaskState.Phase = PhaseExecuting
+				}
+				cw.TaskState.PausedAtPhase = ""
+			}
+			agent := newAgentWithTaskState(apiKey, cfg, cw.TaskState)
+			result, err := agent.Run("Continue the task: "+cw.TaskState.Goal, cw.Messages, cliAgentEmit)
+			agent.Cleanup()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Task error: %v\n\n", err)
+			} else {
+				fmt.Print("Claude: ")
+				fmt.Println(renderMarkdown(result))
+				fmt.Println()
+			}
+			cw.TaskState = agent.TaskState
+			appendMessage(cw, message{Role: "user", Content: "Continue the task"})
+			appendMessage(cw, message{Role: "assistant", Content: result})
+			stats.TotalInput += agent.Stats.TotalInput
+			stats.TotalOutput += agent.Stats.TotalOutput
+			stats.Exchanges += agent.Stats.Exchanges
+			cw.Stats = statsFromToken(stats)
+			if err := saveSessionCW(sessionName, cw); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to auto-save session: %v\n", err)
+			}
 			continue
 		case input == "/save" || strings.HasPrefix(input, "/save "):
 			saveName := strings.TrimPrefix(input, "/save")

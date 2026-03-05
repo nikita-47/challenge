@@ -58,6 +58,7 @@ func main() {
 	if cfg.agent != "" {
 		agent := newAgentWithTools(apiKey, cfg)
 		result, err := agent.Run(cfg.agent, nil, cliAgentEmit)
+		agent.Cleanup()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Agent error: %v\n", err)
 			os.Exit(1)
@@ -152,6 +153,9 @@ func printHelp() {
 	fmt.Println("  /temp <question>     — compare temperature 0 / 0.7 / 1.0 side-by-side")
 	fmt.Println("  /models <question>   — compare weak/medium/strong models side-by-side")
 	fmt.Println("  /agent <task>        — run agent with tools (shell, file read)")
+	fmt.Println("  /task <goal>         — run agent in task mode (planning → executing → validating → done)")
+	fmt.Println("  /task                — show current task state")
+	fmt.Println("  /resume              — resume a paused/interrupted task")
 	fmt.Println("  /tokens              — show token usage stats for current session")
 	fmt.Println("  /compress            — show context compression status and summaries")
 	fmt.Println("  /save [name]         — save session (default: current session)")

@@ -7,6 +7,7 @@ import ChatWindow from '@/components/ChatWindow.vue'
 import ChatInput from '@/components/ChatInput.vue'
 import TokenBar from '@/components/TokenBar.vue'
 import BranchSelector from '@/components/BranchSelector.vue'
+import TaskStatePanel from '@/components/TaskStatePanel.vue'
 import { Button } from '@/components/ui/button'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
@@ -61,6 +62,7 @@ onMounted(() => {
         </Button>
       </div>
 
+      <TaskStatePanel />
       <ChatWindow class="flex-1 overflow-hidden" />
       <TokenBar />
       <ChatInput />

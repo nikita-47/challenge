@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 const chat = useChatStore()
 const input = ref('')
 const textarea = ref<HTMLTextAreaElement | null>(null)
+const taskMode = ref(false)
 
 function send() {
   const text = input.value.trim()
@@ -16,7 +17,12 @@ function send() {
   if (textarea.value) {
     textarea.value.style.height = 'auto'
   }
-  chat.sendMessage(text)
+  if (taskMode.value) {
+    chat.startTask(text)
+    taskMode.value = false
+  } else {
+    chat.sendMessage(text)
+  }
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -43,13 +49,24 @@ function autoGrow(e: Event) {
           v-model="input"
           @keydown="onKeydown"
           @input="autoGrow"
-          placeholder="Enter command..."
+          :placeholder="taskMode ? 'Describe task goal...' : 'Enter command...'"
           class="flex w-full resize-none border border-input bg-background text-foreground px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 focus-visible:border-primary/40 [caret-color:hsl(150_60%_45%)]"
           rows="1"
           :disabled="chat.isStreaming"
         />
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-1">
+        <button
+          v-if="!chat.isStreaming && !chat.taskState"
+          class="px-2 py-1 text-xs border transition-colors"
+          :class="taskMode
+            ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40'
+            : 'text-muted-foreground border-transparent hover:text-foreground hover:border-border'"
+          @click="taskMode = !taskMode"
+          title="Toggle task mode — agent plans steps, executes, validates"
+        >
+          task
+        </button>
         <Button
           v-if="chat.isStreaming"
           variant="destructive"

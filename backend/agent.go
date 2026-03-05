@@ -3,12 +3,16 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // ─── Agent event (for decoupled IO) ──────────────────────────────────────────
@@ -64,6 +68,8 @@ type Agent struct {
 	tools       []toolDef
 	history     []message
 	Stats       tokenStats
+	TaskState   *TaskState
+	workDir     string // sandbox directory for tool execution
 }
 
 // ─── Constructor ─────────────────────────────────────────────────────────────
@@ -90,7 +96,87 @@ func newAgent(apiKey string, cfg config) *Agent {
 func newAgentWithTools(apiKey string, cfg config) *Agent {
 	a := newAgent(apiKey, cfg)
 	a.tools = defaultTools()
+	a.workDir = createSandbox()
 	return a
+}
+
+func newAgentWithTaskState(apiKey string, cfg config, ts *TaskState) *Agent {
+	a := newAgent(apiKey, cfg)
+	a.tools = append(defaultTools(), taskStateTool())
+	a.maxTurns = 25
+	a.TaskState = ts
+	a.workDir = createSandbox()
+	return a
+}
+
+const sandboxDir = ".sandbox"
+
+func createSandbox() string {
+	dir, err := os.MkdirTemp(sandboxDir, "agent-")
+	if err != nil {
+		// Fallback: create .sandbox first, retry.
+		os.MkdirAll(sandboxDir, 0755)
+		dir, err = os.MkdirTemp(sandboxDir, "agent-")
+		if err != nil {
+			// Last resort: system temp.
+			dir, _ = os.MkdirTemp("", "agent-")
+		}
+	}
+	return dir
+}
+
+func (a *Agent) Cleanup() {
+	if a.workDir != "" {
+		os.RemoveAll(a.workDir)
+	}
+}
+
+func taskStateTool() toolDef {
+	return toolDef{
+		Name:        "update_task_state",
+		Description: "Update the task state machine. Actions: set_plan, start_step, complete_step, fail_step, validate, done, pause, resume.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"action": map[string]any{
+					"type":        "string",
+					"description": "The action to perform: set_plan, start_step, complete_step, fail_step, validate, done, pause, resume",
+					"enum":        []string{"set_plan", "start_step", "complete_step", "fail_step", "validate", "done", "pause", "resume"},
+				},
+				"steps": map[string]any{
+					"type":        "array",
+					"description": "Steps for set_plan action. Each step has a description.",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"description": map[string]any{
+								"type":        "string",
+								"description": "What this step does",
+							},
+						},
+						"required": []string{"description"},
+					},
+				},
+				"step_index": map[string]any{
+					"type":        "integer",
+					"description": "Index of the step to start/complete/fail (0-based)",
+				},
+				"result": map[string]any{
+					"type":        "string",
+					"description": "Result description for complete_step",
+				},
+				"error": map[string]any{
+					"type":        "string",
+					"description": "Error description for fail_step",
+				},
+				"expected_action": map[string]any{
+					"type":        "string",
+					"description": "What you plan to do next (shown to user)",
+				},
+			},
+			"required": []string{"action"},
+		},
+	}
 }
 
 func defaultTools() []toolDef {
@@ -128,7 +214,7 @@ func defaultTools() []toolDef {
 
 // ─── Tool execution ──────────────────────────────────────────────────────────
 
-func executeTool(name string, rawInput json.RawMessage) (string, bool) {
+func executeTool(name string, rawInput json.RawMessage, workDir string) (string, bool) {
 	switch name {
 	case "run_shell":
 		var input struct {
@@ -138,6 +224,9 @@ func executeTool(name string, rawInput json.RawMessage) (string, bool) {
 			return "invalid input: " + err.Error(), true
 		}
 		cmd := exec.Command("/bin/sh", "-c", input.Command)
+		if workDir != "" {
+			cmd.Dir = workDir
+		}
 		out, err := cmd.CombinedOutput()
 		result := string(out)
 		if err != nil {
@@ -152,7 +241,12 @@ func executeTool(name string, rawInput json.RawMessage) (string, bool) {
 		if err := json.Unmarshal(rawInput, &input); err != nil {
 			return "invalid input: " + err.Error(), true
 		}
-		data, err := os.ReadFile(input.Path)
+		// Resolve relative paths against workDir.
+		path := input.Path
+		if workDir != "" && !filepath.IsAbs(path) {
+			path = filepath.Join(workDir, path)
+		}
+		data, err := os.ReadFile(path)
 		if err != nil {
 			return "error reading file: " + err.Error(), true
 		}
@@ -174,8 +268,15 @@ func (a *Agent) buildPayload() map[string]any {
 	if len(a.tools) > 0 {
 		payload["tools"] = a.tools
 	}
-	if a.system != "" {
-		payload["system"] = a.system
+	sys := a.system
+	if a.workDir != "" {
+		sys += fmt.Sprintf("\n\nYour working directory is: %s\nAll shell commands execute there. Files you create will be in this sandbox.", a.workDir)
+	}
+	if a.TaskState != nil {
+		sys += a.TaskState.SystemPromptSection()
+	}
+	if sys != "" {
+		payload["system"] = sys
 	}
 	if a.temperature > 0 {
 		payload["temperature"] = a.temperature
@@ -200,7 +301,7 @@ func (a *Agent) callAPI() (*apiResponse, error) {
 
 	if resp.StatusCode != 200 {
 		errBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error (%d): %s", resp.StatusCode, errBody)
+		return nil, &apiError{StatusCode: resp.StatusCode, Body: string(errBody), RetryAfter: retryAfter(resp, 0)}
 	}
 
 	var result apiResponse
@@ -208,6 +309,53 @@ func (a *Agent) callAPI() (*apiResponse, error) {
 		return nil, fmt.Errorf("decode error: %w", err)
 	}
 	return &result, nil
+}
+
+// apiError carries status code and retry info for rate limit handling.
+type apiError struct {
+	StatusCode int
+	Body       string
+	RetryAfter time.Duration
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("API error (%d): %s", e.StatusCode, e.Body)
+}
+
+// retryAfter returns how long to wait before retrying a 429 response.
+func retryAfter(resp *http.Response, attempt int) time.Duration {
+	if s := resp.Header.Get("retry-after"); s != "" {
+		if secs, err := strconv.Atoi(s); err == nil {
+			return time.Duration(secs) * time.Second
+		}
+	}
+	backoff := []time.Duration{5 * time.Second, 15 * time.Second, 30 * time.Second}
+	if attempt < len(backoff) {
+		return backoff[attempt]
+	}
+	return 30 * time.Second
+}
+
+func (a *Agent) callAPIWithRetry(turn int, emit func(AgentEvent)) (*apiResponse, error) {
+	const maxRetries = 3
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		resp, err := a.callAPI()
+		if err == nil {
+			return resp, nil
+		}
+		var ae *apiError
+		if errors.As(err, &ae) && ae.StatusCode == 429 && attempt < maxRetries {
+			wait := retryAfter(nil, attempt)
+			if ae.RetryAfter > 0 {
+				wait = ae.RetryAfter
+			}
+			emit(AgentEvent{Type: "thinking", Text: fmt.Sprintf("Rate limited, retrying in %s... (%d/%d)", wait, attempt+1, maxRetries)})
+			time.Sleep(wait)
+			continue
+		}
+		return nil, err
+	}
+	return nil, fmt.Errorf("rate limit: max retries exceeded")
 }
 
 // ─── Agentic loop ────────────────────────────────────────────────────────────
@@ -237,7 +385,7 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 			emit(AgentEvent{Type: "api_request", Text: string(payloadJSON)})
 		}
 
-		resp, err := a.callAPI()
+		resp, err := a.callAPIWithRetry(turn, emit)
 		if err != nil {
 			emit(AgentEvent{Type: "error", Text: fmt.Sprintf("turn %d: %v", turn, err)})
 			return "", fmt.Errorf("turn %d: %w", turn, err)
@@ -267,6 +415,7 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 
 		// Process tool_use blocks.
 		var toolResults []contentBlock
+		paused := false
 		for _, block := range resp.Content {
 			if block.Type == "text" && block.Text != "" {
 				emit(AgentEvent{Type: "thinking", Text: block.Text})
@@ -275,9 +424,37 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 				continue
 			}
 
+			// Handle task state updates inline.
+			if block.Name == "update_task_state" && a.TaskState != nil {
+				emit(AgentEvent{Type: "tool_call", Tool: block.Name, Input: block.Input})
+				result, err := a.TaskState.applyAction(block.Input)
+				isError := err != nil
+				output := result
+				if isError {
+					output = err.Error()
+				}
+				emit(AgentEvent{Type: "tool_result", Tool: block.Name, Output: output, IsError: isError})
+
+				// Emit task_state event with current state.
+				stateJSON, _ := json.Marshal(a.TaskState)
+				emit(AgentEvent{Type: "task_state", Text: string(stateJSON)})
+
+				toolResults = append(toolResults, contentBlock{
+					Type:      "tool_result",
+					ToolUseID: block.ID,
+					Content:   output,
+					IsError:   isError,
+				})
+
+				if a.TaskState.Phase == PhasePaused {
+					paused = true
+				}
+				continue
+			}
+
 			emit(AgentEvent{Type: "tool_call", Tool: block.Name, Input: block.Input})
 
-			result, isError := executeTool(block.Name, block.Input)
+			result, isError := executeTool(block.Name, block.Input, a.workDir)
 			emit(AgentEvent{Type: "tool_result", Tool: block.Name, Output: result, IsError: isError})
 
 			toolResults = append(toolResults, contentBlock{
@@ -291,6 +468,30 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 		// Append tool results as user message.
 		if len(toolResults) > 0 {
 			a.history = append(a.history, message{Role: "user", Content: toolResults})
+		}
+
+		// If task was paused, return early to save state.
+		if paused {
+			statsCopy := a.Stats
+			emit(AgentEvent{Type: "done", Turn: turn, Stats: &statsCopy})
+			return "Task paused. Use /resume to continue.", nil
+		}
+
+		// If task is done, return early.
+		if a.TaskState != nil && a.TaskState.Phase == PhaseDone {
+			var text strings.Builder
+			for _, block := range resp.Content {
+				if block.Type == "text" {
+					text.WriteString(block.Text)
+				}
+			}
+			statsCopy := a.Stats
+			emit(AgentEvent{Type: "done", Turn: turn, Stats: &statsCopy})
+			result := text.String()
+			if result == "" {
+				result = "Task completed."
+			}
+			return result, nil
 		}
 	}
 

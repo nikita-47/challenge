@@ -72,6 +72,7 @@ export const useSessionsStore = defineStore('sessions', () => {
         createdAt: b.createdAt ?? b.created_at ?? '',
       }))
       chat.activeBranch = data.activeBranch ?? data.active_branch ?? 'main'
+      chat.taskState = data.taskState ?? null
     } catch (e) {
       console.error('Failed to load session:', e)
     }

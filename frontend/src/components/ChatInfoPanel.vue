@@ -138,6 +138,45 @@ watch(() => chat.messages.length, () => {
           </div>
         </div>
 
+        <!-- Task -->
+        <div v-if="chat.taskState" class="space-y-2">
+          <div class="border-t border-primary/10 my-2" />
+          <div class="text-xs font-medium text-primary uppercase tracking-wider">
+            // task
+          </div>
+          <div class="flex justify-between">
+            <span class="text-muted-foreground">phase</span>
+            <span
+              :class="{
+                'text-yellow-400': chat.taskState.phase === 'planning' || chat.taskState.phase === 'paused',
+                'text-blue-400': chat.taskState.phase === 'executing',
+                'text-orange-400': chat.taskState.phase === 'validating',
+                'text-green-400': chat.taskState.phase === 'done',
+              }"
+            >
+              {{ chat.taskState.phase }}
+            </span>
+          </div>
+          <div v-if="chat.taskState.steps.length > 0" class="flex justify-between">
+            <span class="text-muted-foreground">progress</span>
+            <span class="text-primary">
+              {{ chat.taskState.steps.filter(s => s.status === 'completed').length }}/{{ chat.taskState.steps.length }}
+            </span>
+          </div>
+          <div v-if="chat.taskState.expected_action" class="space-y-1">
+            <span class="text-muted-foreground">next_action</span>
+            <p class="text-foreground text-xs bg-background border border-border p-1.5 break-words">
+              {{ chat.taskState.expected_action }}
+            </p>
+          </div>
+          <div v-if="chat.taskState.goal" class="space-y-1">
+            <span class="text-muted-foreground">goal</span>
+            <p class="text-foreground text-xs bg-background border border-border p-1.5 break-words">
+              {{ chat.taskState.goal }}
+            </p>
+          </div>
+        </div>
+
         <!-- Strategy -->
         <div v-if="chat.settings?.strategy" class="space-y-2">
           <div class="border-t border-primary/10 my-2" />

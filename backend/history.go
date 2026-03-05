@@ -61,6 +61,7 @@ type sessionFile struct {
 	Facts        map[string]string `json:"facts,omitempty"`
 	Branches     []branch          `json:"branches,omitempty"`
 	ActiveBranch string            `json:"active_branch,omitempty"`
+	TaskState    *TaskState        `json:"task_state,omitempty"`
 }
 
 func sessionPath(name string) string {
@@ -83,6 +84,7 @@ func saveSessionCW(name string, cw *contextWindow) error {
 		Facts:        cw.Facts,
 		Branches:     cw.Branches,
 		ActiveBranch: cw.ActiveBranch,
+		TaskState:    cw.TaskState,
 	}, "", "  ")
 	if err != nil {
 		return err
@@ -110,6 +112,7 @@ func loadSessionCW(name string) (*contextWindow, error) {
 		Facts:        sf.Facts,
 		Branches:     sf.Branches,
 		ActiveBranch: sf.ActiveBranch,
+		TaskState:    sf.TaskState,
 	}, nil
 }
 

@@ -4,5 +4,7 @@ challenge
 .memory/
 .agents/
 .playwright-mcp/
+.sandbox/
+finance-app/
 skills-lock.json
 *.png

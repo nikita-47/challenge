@@ -24,6 +24,7 @@ type contextWindow struct {
 	Facts        map[string]string // key-value memory for facts strategy
 	Branches     []branch          // dialog branches for branch strategy
 	ActiveBranch string            // current active branch name ("" or "main" = main)
+	TaskState    *TaskState        // task state machine (nil = no active task)
 }
 
 // compressInfo holds details about a compression event.

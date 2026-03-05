@@ -3,7 +3,9 @@
     "allow": [
       "Bash(curl:*)",
       "Bash(wc:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(npx playwright:*)",
+      "Bash(NODE_PATH=/Users/nbonachev/.npm/_npx/9833c18b2d85bc59/node_modules node:*)"
     ]
   }
 }
