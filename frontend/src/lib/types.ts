@@ -2,7 +2,7 @@ export type ContextStrategy = 'summary' | 'window' | 'facts' | 'branch'
 
 // ─── Task State Machine ─────────────────────────────────────────────────────
 
-export type TaskPhase = 'planning' | 'executing' | 'validating' | 'done' | 'paused'
+export type TaskPhase = 'planning' | 'executing' | 'validating' | 'done'
 export type TaskStepStatus = 'pending' | 'in_progress' | 'completed' | 'failed'
 
 export interface TaskStep {
@@ -12,13 +12,21 @@ export interface TaskStep {
   result?: string
 }
 
+export interface StepResult {
+  index: number
+  status: 'completed' | 'failed'
+  output: string
+}
+
 export interface TaskState {
   goal: string
   phase: TaskPhase
+  paused: boolean
   steps: TaskStep[]
-  current_step: number
-  expected_action?: string
-  paused_at_phase?: string
+  step_results: StepResult[]
+  artifacts: Record<string, string>
+  feedback?: string
+  validation_count: number
   error?: string
 }
 
@@ -153,6 +161,11 @@ export interface TaskStateEvent {
   text: string
 }
 
+export interface StepResultEvent {
+  type: 'step_result'
+  text: string
+}
+
 export type SSEEvent =
   | TextDeltaEvent
   | UsageEvent
@@ -166,5 +179,6 @@ export type SSEEvent =
   | FactsUpdatedEvent
   | ApiRequestEvent
   | TaskStateEvent
+  | StepResultEvent
   | { type: 'memory_updated' }
   | { type: 'text'; Text: string }

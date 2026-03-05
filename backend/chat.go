@@ -69,10 +69,15 @@ func cliAgentEmit(ev AgentEvent) {
 			if len(ts.Steps) > 0 {
 				fmt.Printf(" | Steps: %d/%d", ts.completedCount(), len(ts.Steps))
 			}
-			if ts.ExpectedAction != "" {
-				fmt.Printf(" | Next: %s", ts.ExpectedAction)
+			if ts.Paused {
+				fmt.Printf(" | Paused")
 			}
 			fmt.Printf("\033[0m\n")
+		}
+	case "step_result":
+		var sr StepResult
+		if json.Unmarshal([]byte(ev.Text), &sr) == nil {
+			fmt.Printf("\033[36m[Task] Step %d [%s]: %s\033[0m\n", sr.Index, sr.Status, truncate(sr.Output, 100))
 		}
 	}
 }
@@ -213,23 +218,18 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			continue
 		case strings.HasPrefix(input, "/task "):
 			goal := strings.TrimPrefix(input, "/task ")
-			cw.TaskState = &TaskState{Goal: goal, Phase: PhasePlanning}
-			agent := newAgentWithTaskState(apiKey, cfg, cw.TaskState)
-			result, err := agent.Run(goal, cw.Messages, cliAgentEmit)
-			agent.Cleanup()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Task error: %v\n\n", err)
-			} else {
-				fmt.Print("Claude: ")
-				fmt.Println(renderMarkdown(result))
-				fmt.Println()
+			cw.TaskState = &TaskState{
+				Goal:      goal,
+				Phase:     PhasePlanning,
+				Artifacts: make(map[string]string),
 			}
-			cw.TaskState = agent.TaskState
+			fmt.Printf("\033[1m[Task] Starting: %s\033[0m\n", goal)
+			if err := runTaskPhase(apiKey, cfg, cw, nil, cliAgentEmit, cfg.baseURL, cfg.model); err != nil {
+				fmt.Fprintf(os.Stderr, "Task error: %v\n\n", err)
+			}
+			fmt.Println(cw.TaskState.FormatStatus())
 			appendMessage(cw, message{Role: "user", Content: goal})
-			appendMessage(cw, message{Role: "assistant", Content: result})
-			stats.TotalInput += agent.Stats.TotalInput
-			stats.TotalOutput += agent.Stats.TotalOutput
-			stats.Exchanges += agent.Stats.Exchanges
+			appendMessage(cw, message{Role: "assistant", Content: "[task phase: " + cw.TaskState.Phase + "]"})
 			cw.Stats = statsFromToken(stats)
 			if err := saveSessionCW(sessionName, cw); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to auto-save session: %v\n", err)
@@ -246,29 +246,18 @@ func runChat(apiKey, openaiKey string, cfg config) {
 				fmt.Println()
 				continue
 			}
-			if cw.TaskState.Phase == PhasePaused {
-				cw.TaskState.Phase = cw.TaskState.PausedAtPhase
-				if cw.TaskState.Phase == "" {
-					cw.TaskState.Phase = PhaseExecuting
-				}
-				cw.TaskState.PausedAtPhase = ""
+			if !cw.TaskState.Paused {
+				fmt.Printf("Task is not paused (current phase: %s).\n\n", cw.TaskState.Phase)
+				continue
 			}
-			agent := newAgentWithTaskState(apiKey, cfg, cw.TaskState)
-			result, err := agent.Run("Continue the task: "+cw.TaskState.Goal, cw.Messages, cliAgentEmit)
-			agent.Cleanup()
-			if err != nil {
+			cw.TaskState.Paused = false
+			fmt.Printf("\033[1m[Task] Resuming phase: %s\033[0m\n", cw.TaskState.Phase)
+			if err := runTaskPhase(apiKey, cfg, cw, nil, cliAgentEmit, cfg.baseURL, cfg.model); err != nil {
 				fmt.Fprintf(os.Stderr, "Task error: %v\n\n", err)
-			} else {
-				fmt.Print("Claude: ")
-				fmt.Println(renderMarkdown(result))
-				fmt.Println()
 			}
-			cw.TaskState = agent.TaskState
+			fmt.Println(cw.TaskState.FormatStatus())
 			appendMessage(cw, message{Role: "user", Content: "Continue the task"})
-			appendMessage(cw, message{Role: "assistant", Content: result})
-			stats.TotalInput += agent.Stats.TotalInput
-			stats.TotalOutput += agent.Stats.TotalOutput
-			stats.Exchanges += agent.Stats.Exchanges
+			appendMessage(cw, message{Role: "assistant", Content: "[task phase: " + cw.TaskState.Phase + "]"})
 			cw.Stats = statsFromToken(stats)
 			if err := saveSessionCW(sessionName, cw); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to auto-save session: %v\n", err)

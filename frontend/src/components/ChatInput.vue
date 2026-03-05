@@ -51,10 +51,16 @@ function autoGrow(e: Event) {
           v-model="input"
           @keydown="onKeydown"
           @input="autoGrow"
-          :placeholder="taskMode ? 'Describe task goal...' : 'Enter command...'"
+          :placeholder="
+            taskMode
+              ? 'Describe task goal...'
+              : chat.taskState?.paused
+                ? 'Task paused — click Continue above'
+                : 'Enter command...'
+          "
           class="flex w-full resize-none border border-input bg-background text-foreground px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 focus-visible:border-primary/40 [caret-color:hsl(150_60%_45%)]"
           rows="1"
-          :disabled="chat.isStreaming"
+          :disabled="chat.isStreaming || (chat.taskState?.paused ?? false)"
         />
       </div>
       <div class="flex items-center gap-1">

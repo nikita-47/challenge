@@ -16,10 +16,24 @@ const completedSteps = computed(() => {
 
 const totalSteps = computed(() => chat.taskState?.steps.length ?? 0)
 
+const nextPhaseLabel = computed(() => {
+  if (!chat.taskState) {
+    return ''
+  }
+  switch (chat.taskState.phase) {
+    case 'planning':
+      return 'planning'
+    case 'executing':
+      return 'executing'
+    case 'validating':
+      return 'validating'
+    default:
+      return ''
+  }
+})
+
 function stepIcon(status: string) {
   switch (status) {
-    case 'in_progress':
-      return '>'
     case 'completed':
       return 'x'
     case 'failed':
@@ -31,8 +45,6 @@ function stepIcon(status: string) {
 
 function stepClass(status: string) {
   switch (status) {
-    case 'in_progress':
-      return 'text-yellow-400 border-yellow-400/30'
     case 'completed':
       return 'text-green-400 border-green-400/30'
     case 'failed':
@@ -60,7 +72,9 @@ function stepClass(status: string) {
           class="text-[10px] px-1.5 py-0.5 border transition-colors"
           :class="
             chat.taskState?.phase === phase
-              ? 'bg-primary/20 text-primary border-primary/40 animate-pulse'
+              ? chat.taskState?.paused
+                ? 'bg-yellow-400/20 text-yellow-400 border-yellow-400/40'
+                : 'bg-primary/20 text-primary border-primary/40 animate-pulse'
               : phases.indexOf(phase) < phases.indexOf(chat.taskState?.phase as typeof phases[number])
                 ? 'bg-green-400/10 text-green-400 border-green-400/30'
                 : 'text-muted-foreground border-border'
@@ -74,23 +88,25 @@ function stepClass(status: string) {
       <span v-if="totalSteps > 0" class="text-xs text-muted-foreground">
         {{ completedSteps }}/{{ totalSteps }}
       </span>
+      <!-- Continue button -->
       <Button
-        v-if="chat.isStreaming"
-        variant="ghost"
-        size="sm"
-        class="h-5 px-1.5 text-[10px] text-yellow-400 hover:text-yellow-300"
-        @click="chat.pauseTask()"
-      >
-        pause
-      </Button>
-      <Button
-        v-else-if="chat.taskState?.phase === 'paused' || (!chat.isStreaming && chat.taskState?.phase !== 'done')"
+        v-if="chat.taskState?.paused && !chat.isStreaming"
         variant="ghost"
         size="sm"
         class="h-5 px-1.5 text-[10px] text-green-400 hover:text-green-300"
-        @click="chat.resumeTask()"
+        @click="chat.continueTask()"
       >
-        resume
+        continue {{ nextPhaseLabel }}
+      </Button>
+      <!-- Cancel button -->
+      <Button
+        v-if="!chat.isStreaming"
+        variant="ghost"
+        size="sm"
+        class="h-5 px-1.5 text-[10px] text-red-400 hover:text-red-300"
+        @click="chat.cancelTask()"
+      >
+        cancel
       </Button>
     </div>
 
@@ -116,9 +132,28 @@ function stepClass(status: string) {
       </div>
     </div>
 
-    <!-- Expected action -->
-    <div v-if="chat.taskState?.expected_action" class="text-[10px] text-muted-foreground">
-      next: {{ chat.taskState.expected_action }}
+    <!-- Plan summary artifact -->
+    <div
+      v-if="chat.taskState?.artifacts?.plan_summary"
+      class="text-[10px] text-muted-foreground bg-background/50 border border-border p-1.5"
+    >
+      <span class="text-primary">plan:</span> {{ chat.taskState.artifacts.plan_summary }}
+    </div>
+
+    <!-- Feedback from failed validation -->
+    <div
+      v-if="chat.taskState?.feedback"
+      class="text-[10px] text-yellow-400 bg-yellow-400/5 border border-yellow-400/20 p-1.5"
+    >
+      <span class="font-medium">feedback:</span> {{ chat.taskState.feedback }}
+    </div>
+
+    <!-- Error -->
+    <div
+      v-if="chat.taskState?.error"
+      class="text-[10px] text-red-400 bg-red-400/5 border border-red-400/20 p-1.5"
+    >
+      <span class="font-medium">error:</span> {{ chat.taskState.error }}
     </div>
   </div>
 </template>

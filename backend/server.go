@@ -196,6 +196,216 @@ func sseWrite(w http.ResponseWriter, data any) {
 	}
 }
 
+// ─── Task phase orchestrator ─────────────────────────────────────────────────
+
+func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []string, emit func(AgentEvent), localURL string, localModel string) error {
+	ts := cw.TaskState
+
+	if localURL != "" {
+		return runTaskPhaseLocal(localURL, localModel, cfg, cw, emit)
+	}
+
+	switch ts.Phase {
+	case PhasePlanning:
+		agent := newPlanningAgent(apiKey, cfg, ts)
+		defer agent.Cleanup()
+		_, err := agent.Run(ts.Goal, nil, emit)
+		if err != nil {
+			ts.Error = err.Error()
+			return err
+		}
+		if agent.PhaseResult != nil && agent.PhaseResult.Tool == "submit_plan" {
+			var plan struct {
+				Steps []struct {
+					Description string `json:"description"`
+				} `json:"steps"`
+				Summary string `json:"summary"`
+			}
+			json.Unmarshal(agent.PhaseResult.Input, &plan)
+			ts.Steps = make([]TaskStep, len(plan.Steps))
+			for i, s := range plan.Steps {
+				ts.Steps[i] = TaskStep{Index: i, Description: s.Description, Status: StepPending}
+			}
+			ts.Artifacts["plan_summary"] = plan.Summary
+			ts.Phase = PhaseExecuting
+			ts.Paused = true
+			ts.Feedback = ""
+		} else {
+			ts.Error = "Planning agent did not submit a plan"
+		}
+
+	case PhaseExecuting:
+		agent := newExecutingAgent(apiKey, cfg, ts, enabledTools)
+		defer agent.Cleanup()
+		_, err := agent.Run("Execute the plan", nil, emit)
+		// Even on error (e.g. max turns), save what was done.
+		if err != nil {
+			ts.Error = err.Error()
+		}
+		// Copy step results from agent.
+		if len(agent.StepResults) > 0 {
+			ts.StepResults = append(ts.StepResults, agent.StepResults...)
+			// Update step statuses based on results.
+			for _, r := range agent.StepResults {
+				for i, s := range ts.Steps {
+					if s.Index == r.Index {
+						ts.Steps[i].Status = r.Status
+						break
+					}
+				}
+			}
+		}
+		ts.Phase = PhaseValidating
+		ts.Paused = true
+
+	case PhaseValidating:
+		agent := newValidatingAgent(apiKey, cfg, ts)
+		defer agent.Cleanup()
+		_, err := agent.Run("Validate the results", nil, emit)
+		if err != nil {
+			ts.Error = err.Error()
+			return err
+		}
+		if agent.PhaseResult != nil && agent.PhaseResult.Tool == "submit_validation" {
+			var val struct {
+				Passed    bool   `json:"passed"`
+				Feedback  string `json:"feedback"`
+				NextPhase string `json:"next_phase"`
+			}
+			json.Unmarshal(agent.PhaseResult.Input, &val)
+			ts.ValidationCount++
+			ts.Artifacts["validation"] = val.Feedback
+			if val.Passed {
+				ts.Phase = PhaseDone
+				ts.Paused = false
+			} else {
+				ts.Feedback = val.Feedback
+				if val.NextPhase == PhasePlanning {
+					ts.Phase = PhasePlanning
+				} else {
+					ts.Phase = PhaseExecuting
+				}
+				ts.Paused = true
+			}
+		} else {
+			ts.Error = "Validation agent did not submit validation"
+			ts.Paused = true
+		}
+
+	case PhaseDone:
+		// Nothing to do.
+		return nil
+	}
+
+	// Emit updated task state.
+	stateJSON, _ := json.Marshal(ts)
+	emit(AgentEvent{Type: "task_state", Text: string(stateJSON)})
+	return nil
+}
+
+// runTaskPhaseLocal handles task phases using a local LLM (text-only, no tools).
+func runTaskPhaseLocal(localURL, localModel string, cfg config, cw *contextWindow, emit func(AgentEvent)) error {
+	ts := cw.TaskState
+	model := localModel
+	if model == "" {
+		model = cfg.model
+	}
+
+	switch ts.Phase {
+	case PhasePlanning:
+		system := buildPlanningPromptLocal(ts)
+		localCfg := cfg
+		localCfg.system = system
+		msgs := []message{{Role: "user", Content: ts.Goal}}
+
+		text, _, err := streamChatOpenAI(localURL, model, localCfg, msgs, func(token string) {
+			emit(AgentEvent{Type: "text_delta", Text: token})
+		})
+		if err != nil {
+			ts.Error = err.Error()
+			return err
+		}
+
+		steps, summary := parsePlanText(text)
+		ts.Steps = steps
+		ts.Artifacts["plan_summary"] = summary
+		ts.Phase = PhaseExecuting
+		ts.Paused = true
+		ts.Feedback = ""
+
+	case PhaseExecuting:
+		system := buildExecutingPromptLocal(ts)
+		localCfg := cfg
+		localCfg.system = system
+		msgs := []message{{Role: "user", Content: "Execute the plan for: " + ts.Goal}}
+
+		text, _, err := streamChatOpenAI(localURL, model, localCfg, msgs, func(token string) {
+			emit(AgentEvent{Type: "text_delta", Text: token})
+		})
+		if err != nil {
+			ts.Error = err.Error()
+			return err
+		}
+
+		results := parseExecutionText(text, ts.Steps)
+		ts.StepResults = append(ts.StepResults, results...)
+		for _, r := range results {
+			for i, s := range ts.Steps {
+				if s.Index == r.Index {
+					ts.Steps[i].Status = r.Status
+					break
+				}
+			}
+			srJSON, _ := json.Marshal(r)
+			emit(AgentEvent{Type: "step_result", Text: string(srJSON)})
+		}
+		ts.Artifacts["exec_log"] = text
+		ts.Phase = PhaseValidating
+		ts.Paused = true
+
+	case PhaseValidating:
+		system := buildValidatingPromptLocal(ts)
+		localCfg := cfg
+		localCfg.system = system
+		msgs := []message{{Role: "user", Content: "Validate the results for: " + ts.Goal}}
+
+		text, _, err := streamChatOpenAI(localURL, model, localCfg, msgs, func(token string) {
+			emit(AgentEvent{Type: "text_delta", Text: token})
+		})
+		if err != nil {
+			ts.Error = err.Error()
+			return err
+		}
+
+		passed, feedback, nextPhase := parseValidationText(text)
+		ts.ValidationCount++
+		ts.Artifacts["validation"] = feedback
+		if passed {
+			ts.Phase = PhaseDone
+			ts.Paused = false
+		} else {
+			ts.Feedback = feedback
+			if nextPhase == PhasePlanning {
+				ts.Phase = PhasePlanning
+			} else {
+				ts.Phase = PhaseExecuting
+			}
+			ts.Paused = true
+		}
+
+	case PhaseDone:
+		return nil
+	}
+
+	// Emit done for streaming.
+	emit(AgentEvent{Type: "done"})
+
+	// Emit updated task state.
+	stateJSON, _ := json.Marshal(ts)
+	emit(AgentEvent{Type: "task_state", Text: string(stateJSON)})
+	return nil
+}
+
 // ─── POST /api/chat ──────────────────────────────────────────────────────────
 
 type chatRequest struct {
@@ -300,9 +510,42 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	var result string
 	var chatErr error
 
-	if provider == "local" {
+	// Task mode is available for both providers.
+	isTaskMode := req.TaskMode || (cw.TaskState != nil && cw.TaskState.Phase != PhaseDone)
+
+	if isTaskMode {
+		if cw.TaskState == nil {
+			cw.TaskState = &TaskState{
+				Goal:      req.Message,
+				Phase:     PhasePlanning,
+				Artifacts: make(map[string]string),
+			}
+		}
+
+		// If paused and user sent a message, treat as continue with optional feedback.
+		if cw.TaskState.Paused {
+			cw.TaskState.Paused = false
+			if req.Message != "" && req.Message != cw.TaskState.Goal {
+				cw.TaskState.Feedback = req.Message
+			}
+		}
+
+		// Pass localURL/localModel for local provider, empty strings for Claude.
+		taskLocalURL := ""
+		taskLocalModel := ""
+		if provider == "local" {
+			taskLocalURL = localURL
+			taskLocalModel = localModel
+		}
+
+		chatErr = runTaskPhase(apiKey, cfg, cw, req.EnabledTools, emit, taskLocalURL, taskLocalModel)
+		if chatErr != nil {
+			sseWrite(w, map[string]any{"type": "error", "message": chatErr.Error()})
+		}
+
+		result = cw.TaskState.Phase // marker for session save
+	} else if provider == "local" {
 		// Local LLM path: stream directly via OpenAI-compatible API.
-		// Use localModel if set, otherwise fall back to cfg.model.
 		model := localModel
 		if model == "" {
 			model = cfg.model
@@ -315,36 +558,17 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 		})
 		if chatErr != nil {
 			sseWrite(w, map[string]any{"type": "error", "message": chatErr.Error()})
-			// Don't return — still save messages below.
 		}
 		// Emit done event.
 		sseWrite(w, AgentEvent{Type: "done"})
 	} else {
-		// Claude API path: use Agent (supports task mode and tools).
-		isTaskMode := req.TaskMode || (cw.TaskState != nil && cw.TaskState.Phase != PhaseDone)
-		var agent *Agent
-		if isTaskMode {
-			if cw.TaskState == nil {
-				cw.TaskState = &TaskState{
-					Goal:  req.Message,
-					Phase: PhasePlanning,
-				}
-			}
-			agent = newAgentWithTaskStateFiltered(apiKey, cfg, cw.TaskState, req.EnabledTools)
-		} else {
-			agent = newAgent(apiKey, cfg)
-		}
+		// Claude API path.
+		agent := newAgent(apiKey, cfg)
 
 		result, chatErr = agent.Run(req.Message, compressed, emit)
 		agent.Cleanup()
 		if chatErr != nil {
 			sseWrite(w, map[string]any{"type": "error", "message": chatErr.Error()})
-			// Don't return — still save messages and run memory update.
-		}
-
-		// Persist task state from agent back to session.
-		if agent.TaskState != nil {
-			cw.TaskState = agent.TaskState
 		}
 
 		// Accumulate agent stats into session lifetime stats.
@@ -375,7 +599,9 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	}
 
 	// Save to session (append to raw Messages, not compressed).
-	appendMessage(cw, message{Role: "user", Content: req.Message, ApiRequest: apiRequestText})
+	if req.Message != "" {
+		appendMessage(cw, message{Role: "user", Content: req.Message, ApiRequest: apiRequestText})
+	}
 	appendMessage(cw, message{Role: "assistant", Content: result})
 
 	cw.Settings.Model = cfg.model

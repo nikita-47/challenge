@@ -30,6 +30,13 @@ type AgentEvent struct {
 	Stats   *tokenStats     `json:"stats,omitempty"`
 }
 
+// ─── PhaseResult — filled when a phase-ending tool is called ─────────────────
+
+type PhaseResult struct {
+	Tool  string
+	Input json.RawMessage
+}
+
 // ─── Agent types ─────────────────────────────────────────────────────────────
 
 type contentBlock struct {
@@ -68,11 +75,12 @@ type Agent struct {
 	tools       []toolDef
 	history     []message
 	Stats       tokenStats
-	TaskState   *TaskState
-	workDir     string // sandbox directory for tool execution
+	workDir     string      // sandbox directory for tool execution
+	PhaseResult *PhaseResult // filled when submit_plan or submit_validation is called
+	StepResults []StepResult // accumulated from report_step calls
 }
 
-// ─── Constructor ─────────────────────────────────────────────────────────────
+// ─── Constructors ─────────────────────────────────────────────────────────────
 
 func newAgent(apiKey string, cfg config) *Agent {
 	model := "claude-sonnet-4-5-20250929"
@@ -100,15 +108,6 @@ func newAgentWithTools(apiKey string, cfg config) *Agent {
 	return a
 }
 
-func newAgentWithTaskState(apiKey string, cfg config, ts *TaskState) *Agent {
-	a := newAgent(apiKey, cfg)
-	a.tools = append(defaultTools(), taskStateTool())
-	a.maxTurns = 25
-	a.TaskState = ts
-	a.workDir = createSandbox()
-	return a
-}
-
 // filterTools returns only the tools whose Name is in the enabled list.
 func filterTools(tools []toolDef, enabled []string) []toolDef {
 	set := make(map[string]struct{}, len(enabled))
@@ -124,59 +123,53 @@ func filterTools(tools []toolDef, enabled []string) []toolDef {
 	return result
 }
 
-// newAgentWithTaskStateFiltered creates a task-mode agent with optional tool filtering.
-// If enabledTools is non-empty, only those default tools are included; update_task_state
-// is always added regardless. If enabledTools is empty, all default tools are included.
-func newAgentWithTaskStateFiltered(apiKey string, cfg config, ts *TaskState, enabledTools []string) *Agent {
+// ─── Phase-specific agent constructors ───────────────────────────────────────
+
+func newPlanningAgent(apiKey string, cfg config, ts *TaskState) *Agent {
 	a := newAgent(apiKey, cfg)
-	base := defaultTools()
-	if len(enabledTools) > 0 {
-		base = filterTools(base, enabledTools)
-	}
-	a.tools = append(base, taskStateTool())
-	a.maxTurns = 25
-	a.TaskState = ts
+	a.system = buildPlanningPrompt(ts)
+	a.tools = []toolDef{submitPlanTool()}
+	a.maxTurns = 5
 	a.workDir = createSandbox()
 	return a
 }
 
-const sandboxDir = ".sandbox"
-
-func createSandbox() string {
-	dir, err := os.MkdirTemp(sandboxDir, "agent-")
-	if err != nil {
-		// Fallback: create .sandbox first, retry.
-		os.MkdirAll(sandboxDir, 0755)
-		dir, err = os.MkdirTemp(sandboxDir, "agent-")
-		if err != nil {
-			// Last resort: system temp.
-			dir, _ = os.MkdirTemp("", "agent-")
-		}
+func newExecutingAgent(apiKey string, cfg config, ts *TaskState, enabledTools []string) *Agent {
+	a := newAgent(apiKey, cfg)
+	a.system = buildExecutingPrompt(ts)
+	// Base tools for execution: run_shell, read_file, report_step.
+	base := defaultTools()
+	if len(enabledTools) > 0 {
+		base = filterTools(base, enabledTools)
 	}
-	return dir
+	// Always include report_step.
+	a.tools = append(base, reportStepTool())
+	a.maxTurns = 20
+	a.workDir = createSandbox()
+	return a
 }
 
-func (a *Agent) Cleanup() {
-	if a.workDir != "" {
-		os.RemoveAll(a.workDir)
-	}
+func newValidatingAgent(apiKey string, cfg config, ts *TaskState) *Agent {
+	a := newAgent(apiKey, cfg)
+	a.system = buildValidatingPrompt(ts)
+	a.tools = append(defaultTools(), submitValidationTool())
+	a.maxTurns = 10
+	a.workDir = createSandbox()
+	return a
 }
 
-func taskStateTool() toolDef {
+// ─── Phase-specific tools ─────────────────────────────────────────────────────
+
+func submitPlanTool() toolDef {
 	return toolDef{
-		Name:        "update_task_state",
-		Description: "Update the task state machine. Actions: set_plan, start_step, complete_step, fail_step, validate, done, pause, resume.",
+		Name:        "submit_plan",
+		Description: "Submit the structured plan for the task. Call this when you have analyzed the goal and created a concrete plan.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"action": map[string]any{
-					"type":        "string",
-					"description": "The action to perform: set_plan, start_step, complete_step, fail_step, validate, done, pause, resume",
-					"enum":        []string{"set_plan", "start_step", "complete_step", "fail_step", "validate", "done", "pause", "resume"},
-				},
 				"steps": map[string]any{
 					"type":        "array",
-					"description": "Steps for set_plan action. Each step has a description.",
+					"description": "List of concrete steps to execute",
 					"items": map[string]any{
 						"type": "object",
 						"properties": map[string]any{
@@ -188,24 +181,64 @@ func taskStateTool() toolDef {
 						"required": []string{"description"},
 					},
 				},
-				"step_index": map[string]any{
-					"type":        "integer",
-					"description": "Index of the step to start/complete/fail (0-based)",
-				},
-				"result": map[string]any{
+				"summary": map[string]any{
 					"type":        "string",
-					"description": "Result description for complete_step",
-				},
-				"error": map[string]any{
-					"type":        "string",
-					"description": "Error description for fail_step",
-				},
-				"expected_action": map[string]any{
-					"type":        "string",
-					"description": "What you plan to do next (shown to user)",
+					"description": "Brief summary of the overall approach",
 				},
 			},
-			"required": []string{"action"},
+			"required": []string{"steps", "summary"},
+		},
+	}
+}
+
+func reportStepTool() toolDef {
+	return toolDef{
+		Name:        "report_step",
+		Description: "Report the result of completing or failing a step. Call this after each step.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"step_index": map[string]any{
+					"type":        "integer",
+					"description": "0-based index of the step",
+				},
+				"status": map[string]any{
+					"type":        "string",
+					"description": "Result status: completed or failed",
+					"enum":        []string{"completed", "failed"},
+				},
+				"output": map[string]any{
+					"type":        "string",
+					"description": "What was done and what the result was",
+				},
+			},
+			"required": []string{"step_index", "status", "output"},
+		},
+	}
+}
+
+func submitValidationTool() toolDef {
+	return toolDef{
+		Name:        "submit_validation",
+		Description: "Submit the validation result. Call this after verifying the execution results.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"passed": map[string]any{
+					"type":        "boolean",
+					"description": "True if the goal was successfully achieved, false otherwise",
+				},
+				"feedback": map[string]any{
+					"type":        "string",
+					"description": "Summary of what was verified, or description of what failed and needs fixing",
+				},
+				"next_phase": map[string]any{
+					"type":        "string",
+					"description": "If passed=false, which phase to go back to: 'executing' or 'planning'",
+					"enum":        []string{"executing", "planning"},
+				},
+			},
+			"required": []string{"passed"},
 		},
 	}
 }
@@ -240,6 +273,30 @@ func defaultTools() []toolDef {
 				"required": []string{"path"},
 			},
 		},
+	}
+}
+
+// ─── Sandbox ──────────────────────────────────────────────────────────────────
+
+const sandboxDir = ".sandbox"
+
+func createSandbox() string {
+	dir, err := os.MkdirTemp(sandboxDir, "agent-")
+	if err != nil {
+		// Fallback: create .sandbox first, retry.
+		os.MkdirAll(sandboxDir, 0755)
+		dir, err = os.MkdirTemp(sandboxDir, "agent-")
+		if err != nil {
+			// Last resort: system temp.
+			dir, _ = os.MkdirTemp("", "agent-")
+		}
+	}
+	return dir
+}
+
+func (a *Agent) Cleanup() {
+	if a.workDir != "" {
+		os.RemoveAll(a.workDir)
 	}
 }
 
@@ -303,9 +360,6 @@ func (a *Agent) buildPayload() map[string]any {
 	if a.workDir != "" {
 		sys += fmt.Sprintf("\n\nYour working directory is: %s\nAll shell commands execute there. Files you create will be in this sandbox.", a.workDir)
 	}
-	if a.TaskState != nil {
-		sys += a.TaskState.SystemPromptSection()
-	}
 	if sys != "" {
 		payload["system"] = sys
 	}
@@ -355,9 +409,11 @@ func (e *apiError) Error() string {
 
 // retryAfter returns how long to wait before retrying a 429 response.
 func retryAfter(resp *http.Response, attempt int) time.Duration {
-	if s := resp.Header.Get("retry-after"); s != "" {
-		if secs, err := strconv.Atoi(s); err == nil {
-			return time.Duration(secs) * time.Second
+	if resp != nil {
+		if s := resp.Header.Get("retry-after"); s != "" {
+			if secs, err := strconv.Atoi(s); err == nil {
+				return time.Duration(secs) * time.Second
+			}
 		}
 	}
 	backoff := []time.Duration{5 * time.Second, 15 * time.Second, 30 * time.Second}
@@ -446,7 +502,8 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 
 		// Process tool_use blocks.
 		var toolResults []contentBlock
-		paused := false
+		phaseComplete := false
+
 		for _, block := range resp.Content {
 			if block.Type == "text" && block.Text != "" {
 				emit(AgentEvent{Type: "thinking", Text: block.Text})
@@ -455,36 +512,50 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 				continue
 			}
 
-			// Handle task state updates inline.
-			if block.Name == "update_task_state" && a.TaskState != nil {
-				emit(AgentEvent{Type: "tool_call", Tool: block.Name, Input: block.Input})
-				result, err := a.TaskState.applyAction(block.Input)
-				isError := err != nil
-				output := result
-				if isError {
-					output = err.Error()
-				}
-				emit(AgentEvent{Type: "tool_result", Tool: block.Name, Output: output, IsError: isError})
+			emit(AgentEvent{Type: "tool_call", Tool: block.Name, Input: block.Input})
 
-				// Emit task_state event with current state.
-				stateJSON, _ := json.Marshal(a.TaskState)
-				emit(AgentEvent{Type: "task_state", Text: string(stateJSON)})
-
+			// Handle phase-ending tools: submit_plan and submit_validation.
+			if block.Name == "submit_plan" || block.Name == "submit_validation" {
+				a.PhaseResult = &PhaseResult{Tool: block.Name, Input: block.Input}
+				emit(AgentEvent{Type: "tool_result", Tool: block.Name, Output: "Accepted.", IsError: false})
 				toolResults = append(toolResults, contentBlock{
 					Type:      "tool_result",
 					ToolUseID: block.ID,
-					Content:   output,
-					IsError:   isError,
+					Content:   "Accepted.",
+					IsError:   false,
 				})
-
-				if a.TaskState.Phase == PhasePaused {
-					paused = true
-				}
+				phaseComplete = true
 				continue
 			}
 
-			emit(AgentEvent{Type: "tool_call", Tool: block.Name, Input: block.Input})
+			// Handle report_step: accumulate results, emit event, do NOT break.
+			if block.Name == "report_step" {
+				var input struct {
+					StepIndex int    `json:"step_index"`
+					Status    string `json:"status"`
+					Output    string `json:"output"`
+				}
+				if err := json.Unmarshal(block.Input, &input); err == nil {
+					sr := StepResult{
+						Index:  input.StepIndex,
+						Status: input.Status,
+						Output: input.Output,
+					}
+					a.StepResults = append(a.StepResults, sr)
+					srJSON, _ := json.Marshal(sr)
+					emit(AgentEvent{Type: "step_result", Text: string(srJSON)})
+				}
+				emit(AgentEvent{Type: "tool_result", Tool: block.Name, Output: "Noted.", IsError: false})
+				toolResults = append(toolResults, contentBlock{
+					Type:      "tool_result",
+					ToolUseID: block.ID,
+					Content:   "Noted.",
+					IsError:   false,
+				})
+				continue
+			}
 
+			// Default tool execution (run_shell, read_file).
 			result, isError := executeTool(block.Name, block.Input, a.workDir)
 			emit(AgentEvent{Type: "tool_result", Tool: block.Name, Output: result, IsError: isError})
 
@@ -501,28 +572,11 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 			a.history = append(a.history, message{Role: "user", Content: toolResults})
 		}
 
-		// If task was paused, return early to save state.
-		if paused {
+		// If a phase-ending tool was called, exit the loop.
+		if phaseComplete {
 			statsCopy := a.Stats
 			emit(AgentEvent{Type: "done", Turn: turn, Stats: &statsCopy})
-			return "Task paused. Use /resume to continue.", nil
-		}
-
-		// If task is done, return early.
-		if a.TaskState != nil && a.TaskState.Phase == PhaseDone {
-			var text strings.Builder
-			for _, block := range resp.Content {
-				if block.Type == "text" {
-					text.WriteString(block.Text)
-				}
-			}
-			statsCopy := a.Stats
-			emit(AgentEvent{Type: "done", Turn: turn, Stats: &statsCopy})
-			result := text.String()
-			if result == "" {
-				result = "Task completed."
-			}
-			return result, nil
+			return "", nil
 		}
 	}
 

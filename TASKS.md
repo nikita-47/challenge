@@ -301,21 +301,21 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 **Assignment:** Implement a finite state machine for agent tasks — agent plans steps, executes them sequentially, validates results. State is persistent, can be paused and resumed.
 
 **What was built on top of previous day:**
-- `backend/taskstate.go` — **NEW** — `TaskState`, `TaskStep`, `TaskPhase` types, FSM transition validation, `applyAction()` for 8 actions (set_plan, start_step, complete_step, fail_step, validate, done, pause, resume), `SystemPromptSection()` for injecting FSM rules + current state into system prompt, `FormatStatus()` for CLI display
-- `backend/agent.go` — `TaskState *TaskState` field on `Agent`, `newAgentWithTaskState()` constructor (25 max turns, includes `update_task_state` tool), `taskStateTool()` definition with full JSON schema, inline handling of `update_task_state` in `Run()` loop (before `executeTool`), pause/done early returns, `task_state` AgentEvent emission, TaskState section injected into system prompt in `buildPayload()`
+- `backend/taskstate.go` — `TaskState`, `TaskStep`, `StepResult` types, deterministic phase transitions (planning → executing → validating → done), phase-specific system prompts (`buildPlanningPrompt()`, `buildExecutingPrompt()`, `buildValidatingPrompt()`), local LLM text-mode prompts and parsers (`parsePlanText()`, `parseExecutionText()`, `parseValidationText()`), `FormatStatus()` for CLI display
+- `backend/agent.go` — `PhaseResult`, `StepResults` fields on `Agent`, phase-specific constructors (`newPlanningAgent()`, `newExecutingAgent()`, `newValidatingAgent()`), 3 phase tools (`submitPlanTool()`, `reportStepTool()`, `submitValidationTool()`), `submit_plan`/`submit_validation` handling in `Run()` loop with `phaseComplete` early exit, `report_step` accumulation
+- `backend/server.go` — `runTaskPhase()` orchestrator (switch by phase, agent creation, result processing, transitions), `runTaskPhaseLocal()` for local LLM (text-only, no tools), `providerSettings` struct with global provider state, `/api/settings` GET/POST endpoints, task mode integration in `handleChat()` with provider-aware routing, `SendSettings` popover support via `enabledTools` in `chatRequest`
+- `backend/chat.go` — `/task <goal>` (start task mode), `/task` (show status), `/resume` (resume paused task), `step_result` event display in `cliAgentEmit`
 - `backend/history.go` — `TaskState` field in `sessionFile`, persisted in `saveSessionCW()`/`loadSessionCW()`
 - `backend/compress.go` — `TaskState` field in `contextWindow`
-- `backend/server.go` — `TaskMode bool` in `chatRequest`, task-aware agent creation in `handleChat()` (creates `newAgentWithTaskState` when taskMode or active non-done TaskState), `taskState` in session GET response
-- `backend/chat.go` — `/task <goal>` (start task mode), `/task` (show status), `/resume` (resume paused task), `task_state` event display in `cliAgentEmit`
-- `backend/main.go` — `/task`, `/resume` in `printHelp()`
-- `frontend/src/lib/types.ts` — `TaskPhase`, `TaskStepStatus`, `TaskStep`, `TaskState`, `TaskStateEvent` types, added to `SSEEvent` union
-- `frontend/src/stores/chat.ts` — `taskState` ref, `task_state` SSE handler, `startTask()`, `pauseTask()`, `resumeTask()` methods, `taskMode: true` in request body when task active
+- `frontend/src/lib/types.ts` — `TaskPhase` (without 'paused'), `TaskStep`, `StepResult`, `TaskState` (with `paused`, `artifacts`, `step_results`, `validation_count`), `StepResultEvent`, added to `SSEEvent` union
+- `frontend/src/stores/chat.ts` — `taskState` ref, `task_state`/`step_result` SSE handlers, `startTask()`, `continueTask()`, `cancelTask()` methods, `isTaskContinue` logic (empty message for continue), `taskMode: true` + `enabledTools` in request body
 - `frontend/src/stores/sessions.ts` — `taskState` loaded from session data
-- `frontend/src/components/TaskStatePanel.vue` — **NEW** — compact panel with phase indicators (planning→executing→validating→done with active pulse), step list with status icons, progress counter, pause/resume buttons
-- `frontend/src/components/ChatInfoPanel.vue` — task info section (phase, progress, goal, expected action)
+- `frontend/src/components/TaskStatePanel.vue` — phase indicators with paused state (yellow), step list with checkmarks, progress counter, Continue button (visible when paused), Cancel button, plan summary artifact display, feedback/error sections
+- `frontend/src/components/ChatInput.vue` — disabled when paused, placeholder "Task paused — click Continue above", `SendSettingsPopover` hidden during active task
+- `frontend/src/components/ChatInfoPanel.vue` — task info section (phase, paused, validation_count, progress, step_results, goal)
 - `frontend/src/App.vue` — `TaskStatePanel` integrated between toolbar and ChatWindow
 
-**Key code:** `TaskState.applyAction()`, `TaskState.SystemPromptSection()`, `newAgentWithTaskState()`, `update_task_state` tool, `task_state` AgentEvent
+**Key code:** `runTaskPhase()`, `runTaskPhaseLocal()`, `newPlanningAgent()`, `newExecutingAgent()`, `newValidatingAgent()`, `submitPlanTool()`, `reportStepTool()`, `submitValidationTool()`, `parsePlanText()`, `parseValidationText()`, `continueTask()`, `cancelTask()`
 
 ---
 
