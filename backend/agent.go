@@ -109,6 +109,37 @@ func newAgentWithTaskState(apiKey string, cfg config, ts *TaskState) *Agent {
 	return a
 }
 
+// filterTools returns only the tools whose Name is in the enabled list.
+func filterTools(tools []toolDef, enabled []string) []toolDef {
+	set := make(map[string]struct{}, len(enabled))
+	for _, name := range enabled {
+		set[name] = struct{}{}
+	}
+	var result []toolDef
+	for _, t := range tools {
+		if _, ok := set[t.Name]; ok {
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// newAgentWithTaskStateFiltered creates a task-mode agent with optional tool filtering.
+// If enabledTools is non-empty, only those default tools are included; update_task_state
+// is always added regardless. If enabledTools is empty, all default tools are included.
+func newAgentWithTaskStateFiltered(apiKey string, cfg config, ts *TaskState, enabledTools []string) *Agent {
+	a := newAgent(apiKey, cfg)
+	base := defaultTools()
+	if len(enabledTools) > 0 {
+		base = filterTools(base, enabledTools)
+	}
+	a.tools = append(base, taskStateTool())
+	a.maxTurns = 25
+	a.TaskState = ts
+	a.workDir = createSandbox()
+	return a
+}
+
 const sandboxDir = ".sandbox"
 
 func createSandbox() string {

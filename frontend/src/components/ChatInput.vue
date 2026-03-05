@@ -2,11 +2,13 @@
 import { ref } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { Button } from '@/components/ui/button'
+import SendSettingsPopover from './SendSettingsPopover.vue'
 
 const chat = useChatStore()
 const input = ref('')
 const textarea = ref<HTMLTextAreaElement | null>(null)
 const taskMode = ref(false)
+const enabledTools = ref(['run_shell', 'read_file'])
 
 function send() {
   const text = input.value.trim()
@@ -18,7 +20,7 @@ function send() {
     textarea.value.style.height = 'auto'
   }
   if (taskMode.value) {
-    chat.startTask(text)
+    chat.startTask(text, enabledTools.value)
     taskMode.value = false
   } else {
     chat.sendMessage(text)
@@ -56,17 +58,11 @@ function autoGrow(e: Event) {
         />
       </div>
       <div class="flex items-center gap-1">
-        <button
+        <SendSettingsPopover
           v-if="!chat.isStreaming && !chat.taskState"
-          class="px-2 py-1 text-xs border transition-colors"
-          :class="taskMode
-            ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40'
-            : 'text-muted-foreground border-transparent hover:text-foreground hover:border-border'"
-          @click="taskMode = !taskMode"
-          title="Toggle task mode — agent plans steps, executes, validates"
-        >
-          task
-        </button>
+          v-model:task-mode="taskMode"
+          v-model:enabled-tools="enabledTools"
+        />
         <Button
           v-if="chat.isStreaming"
           variant="destructive"

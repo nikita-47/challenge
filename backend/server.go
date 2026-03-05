@@ -199,18 +199,19 @@ func sseWrite(w http.ResponseWriter, data any) {
 // ─── POST /api/chat ──────────────────────────────────────────────────────────
 
 type chatRequest struct {
-	Message     string  `json:"message"`
-	Session     string  `json:"session"`
-	Model       string  `json:"model"`
-	System      string  `json:"system"`
-	MaxTokens   int     `json:"maxTokens"`
-	Temperature float64 `json:"temperature"`
-	Strategy    string  `json:"strategy"`
-	WindowSize  int     `json:"windowSize"`
-	Profile     string  `json:"profile"`
-	Project     string  `json:"project"`
-	Operator    string  `json:"operator"`
-	TaskMode    bool    `json:"taskMode"`
+	Message      string   `json:"message"`
+	Session      string   `json:"session"`
+	Model        string   `json:"model"`
+	System       string   `json:"system"`
+	MaxTokens    int      `json:"maxTokens"`
+	Temperature  float64  `json:"temperature"`
+	Strategy     string   `json:"strategy"`
+	WindowSize   int      `json:"windowSize"`
+	Profile      string   `json:"profile"`
+	Project      string   `json:"project"`
+	Operator     string   `json:"operator"`
+	TaskMode     bool     `json:"taskMode"`
+	EnabledTools []string `json:"enabledTools"`
 }
 
 func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
@@ -329,7 +330,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 					Phase: PhasePlanning,
 				}
 			}
-			agent = newAgentWithTaskState(apiKey, cfg, cw.TaskState)
+			agent = newAgentWithTaskStateFiltered(apiKey, cfg, cw.TaskState, req.EnabledTools)
 		} else {
 			agent = newAgent(apiKey, cfg)
 		}

@@ -19,6 +19,7 @@ export const useChatStore = defineStore('chat', () => {
   const branches = ref<BranchInfo[]>([])
   const activeBranch = ref('main')
   const taskState = ref<TaskState | null>(null)
+  const activeEnabledTools = ref<string[]>([])
 
   let abortController: AbortController | null = null
 
@@ -44,6 +45,7 @@ export const useChatStore = defineStore('chat', () => {
     branches.value = []
     activeBranch.value = 'main'
     taskState.value = null
+    activeEnabledTools.value = []
   }
 
   const tokensSaved = ref(0)
@@ -84,7 +86,7 @@ export const useChatStore = defineStore('chat', () => {
     const body = {
       message: text,
       session: currentSession.value,
-      ...(taskState.value && { taskMode: true }),
+      ...(taskState.value && { taskMode: true, enabledTools: activeEnabledTools.value }),
       ...(settings.value && {
         model: settings.value.model,
         system: settings.value.system,
@@ -231,7 +233,8 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function startTask(goal: string) {
+  function startTask(goal: string, enabledTools?: string[]) {
+    activeEnabledTools.value = enabledTools ?? []
     taskState.value = {
       goal,
       phase: 'planning',
@@ -275,6 +278,7 @@ export const useChatStore = defineStore('chat', () => {
     branches,
     activeBranch,
     taskState,
+    activeEnabledTools,
     startTask,
     pauseTask,
     resumeTask,
