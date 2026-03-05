@@ -23,6 +23,7 @@ const memory = useMemoryStore()
 onMounted(() => {
   sessionsStore.loadList()
   ui.loadConfig()
+  ui.loadSettings()
   memory.loadAll()
 })
 </script>

@@ -56,6 +56,8 @@ POST /api/memory/projects               — создать проект
 GET  /api/memory/projects/:name         — читать проект
 PUT  /api/memory/projects/:name         — обновить проект
 DELETE /api/memory/projects/:name       — удалить проект
+GET  /api/settings                      — текущий LLM провайдер (claude/local)
+POST /api/settings                      — переключить провайдер {provider, localURL, localModel}
 ```
 
 ## Правила

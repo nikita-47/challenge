@@ -1,12 +1,17 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { fetchConfig, type AppConfig } from '@/lib/api'
+import { fetchConfig, fetchSettings, updateSettings, type AppConfig, type ProviderSettings } from '@/lib/api'
 
 export const useUIStore = defineStore('ui', () => {
   const leftSidebarOpen = ref(true)
   const rightSidebarOpen = ref(false)
   const config = ref<AppConfig | null>(null)
   const newChatDialogOpen = ref(false)
+  const providerSettings = ref<ProviderSettings>({
+    provider: 'local',
+    localURL: 'http://localhost:1234',
+    localModel: 'qwen2.5-0.5b-instruct-mlx',
+  })
 
   function toggleLeftSidebar() {
     leftSidebarOpen.value = !leftSidebarOpen.value
@@ -24,13 +29,28 @@ export const useUIStore = defineStore('ui', () => {
     }
   }
 
+  async function loadSettings() {
+    try {
+      providerSettings.value = await fetchSettings()
+    } catch {
+      // keep defaults
+    }
+  }
+
+  async function saveSettings(settings: ProviderSettings) {
+    providerSettings.value = await updateSettings(settings)
+  }
+
   return {
     leftSidebarOpen,
     rightSidebarOpen,
     config,
     newChatDialogOpen,
+    providerSettings,
     toggleLeftSidebar,
     toggleRightSidebar,
     loadConfig,
+    loadSettings,
+    saveSettings,
   }
 })

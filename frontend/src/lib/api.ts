@@ -251,3 +251,31 @@ export async function fetchBranchesAPI(session: string) {
   }
   return resp.json()
 }
+
+// ─── Provider Settings API ────────────────────────────────────────────────────
+
+export interface ProviderSettings {
+  provider: 'claude' | 'local'
+  localURL: string
+  localModel: string
+}
+
+export async function fetchSettings(): Promise<ProviderSettings> {
+  const resp = await fetch('/api/settings')
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch settings: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function updateSettings(settings: ProviderSettings): Promise<ProviderSettings> {
+  const resp = await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings),
+  })
+  if (!resp.ok) {
+    throw new Error(`Failed to update settings: ${resp.statusText}`)
+  }
+  return resp.json()
+}

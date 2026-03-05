@@ -8,6 +8,7 @@ import { fetchProfile, fetchProject, fetchOperator, updateProfile, updateProject
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import MemoryEditorDialog from '@/components/MemoryEditorDialog.vue'
+import GlobalSettings from '@/components/GlobalSettings.vue'
 
 defineEmits<{ close: [] }>()
 
@@ -301,6 +302,8 @@ watch(tab, (v) => {
         </div>
       </div>
     </ScrollArea>
+
+    <GlobalSettings />
 
     <MemoryEditorDialog
       :open="editorOpen"

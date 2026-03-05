@@ -6,9 +6,42 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 )
 
+// ─── Global provider settings ─────────────────────────────────────────────────
+
+type providerSettings struct {
+	mu         sync.RWMutex
+	Provider   string `json:"provider"`   // "claude" | "local"
+	LocalURL   string `json:"localURL"`   // e.g. "http://localhost:1234"
+	LocalModel string `json:"localModel"` // e.g. "qwen2.5-0.5b-instruct-mlx"
+}
+
+func (ps *providerSettings) get() (provider, localURL, localModel string) {
+	ps.mu.RLock()
+	defer ps.mu.RUnlock()
+	return ps.Provider, ps.LocalURL, ps.LocalModel
+}
+
+func (ps *providerSettings) set(provider, localURL, localModel string) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	ps.Provider = provider
+	ps.LocalURL = localURL
+	ps.LocalModel = localModel
+}
+
+var globalProvider providerSettings
+
 func startServer(apiKey string, cfg config) {
+	// Initialize global provider from CLI flags.
+	if cfg.baseURL != "" {
+		globalProvider.set("local", cfg.baseURL, cfg.model)
+	} else {
+		globalProvider.set("claude", "http://localhost:1234", "qwen2.5-0.5b-instruct-mlx")
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
@@ -89,6 +122,18 @@ func startServer(apiKey string, cfg config) {
 		handleMemoryItem(w, r, name, memoryOperatorsDir())
 	})
 
+	// ─── Provider settings endpoints ─────────────────────────────────────────
+	mux.HandleFunc("/api/settings", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handleGetSettings(w, r)
+		case http.MethodPost:
+			handlePostSettings(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	mux.HandleFunc("/api/config", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -98,12 +143,16 @@ func startServer(apiKey string, cfg config) {
 		if cfg.model != "" {
 			model = cfg.model
 		}
+		provider, localURL, localModel := globalProvider.get()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"model":       model,
 			"maxTokens":   cfg.maxTokens,
 			"temperature": cfg.temperature,
 			"system":      cfg.system,
+			"provider":    provider,
+			"localURL":    localURL,
+			"localModel":  localModel,
 		})
 	})
 
@@ -244,62 +293,89 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 
 	compressed := buildAPIMessages(cw)
 
-	// Decide whether to use task mode agent.
-	isTaskMode := req.TaskMode || (cw.TaskState != nil && cw.TaskState.Phase != PhaseDone)
-	var agent *Agent
-	if isTaskMode {
-		if cw.TaskState == nil {
-			cw.TaskState = &TaskState{
-				Goal:  req.Message,
-				Phase: PhasePlanning,
+	// Read current provider settings.
+	provider, localURL, localModel := globalProvider.get()
+
+	var result string
+	var chatErr error
+
+	if provider == "local" {
+		// Local LLM path: stream directly via OpenAI-compatible API.
+		// Use localModel if set, otherwise fall back to cfg.model.
+		model := localModel
+		if model == "" {
+			model = cfg.model
+		}
+		localCfg := cfg
+		localCfg.model = model
+
+		result, _, chatErr = streamChatOpenAI(localURL, model, localCfg, compressed, func(token string) {
+			sseWrite(w, AgentEvent{Type: "text_delta", Text: token})
+		})
+		if chatErr != nil {
+			sseWrite(w, map[string]any{"type": "error", "message": chatErr.Error()})
+			// Don't return — still save messages below.
+		}
+		// Emit done event.
+		sseWrite(w, AgentEvent{Type: "done"})
+	} else {
+		// Claude API path: use Agent (supports task mode and tools).
+		isTaskMode := req.TaskMode || (cw.TaskState != nil && cw.TaskState.Phase != PhaseDone)
+		var agent *Agent
+		if isTaskMode {
+			if cw.TaskState == nil {
+				cw.TaskState = &TaskState{
+					Goal:  req.Message,
+					Phase: PhasePlanning,
+				}
+			}
+			agent = newAgentWithTaskState(apiKey, cfg, cw.TaskState)
+		} else {
+			agent = newAgent(apiKey, cfg)
+		}
+
+		result, chatErr = agent.Run(req.Message, compressed, emit)
+		agent.Cleanup()
+		if chatErr != nil {
+			sseWrite(w, map[string]any{"type": "error", "message": chatErr.Error()})
+			// Don't return — still save messages and run memory update.
+		}
+
+		// Persist task state from agent back to session.
+		if agent.TaskState != nil {
+			cw.TaskState = agent.TaskState
+		}
+
+		// Accumulate agent stats into session lifetime stats.
+		stats.TotalInput += agent.Stats.TotalInput
+		stats.TotalOutput += agent.Stats.TotalOutput
+		stats.Exchanges += agent.Stats.Exchanges
+
+		// Post-process: extract facts for facts strategy.
+		if getStrategy(cw) == strategyFacts {
+			if err := maybeExtractFacts(apiKey, cw, &stats); err != nil {
+				// Non-fatal: log but continue.
+			} else if len(cw.Facts) > 0 {
+				sseWrite(w, map[string]any{
+					"type":  "facts_updated",
+					"facts": cw.Facts,
+				})
 			}
 		}
-		agent = newAgentWithTaskState(apiKey, cfg, cw.TaskState)
-	} else {
-		agent = newAgent(apiKey, cfg)
-	}
 
-	result, err := agent.Run(req.Message, compressed, emit)
-	agent.Cleanup()
-	if err != nil {
-		sseWrite(w, map[string]any{"type": "error", "message": err.Error()})
-		// Don't return — still save messages and run memory update.
+		// Auto-update profile/project memory.
+		if cw.Settings.Profile != "" || cw.Settings.Project != "" {
+			if err := maybeUpdateMemory(apiKey, cw, &stats); err != nil {
+				fmt.Fprintf(os.Stderr, "[memory_update] error: %v\n", err)
+			} else {
+				sseWrite(w, map[string]any{"type": "memory_updated"})
+			}
+		}
 	}
-
-	// Persist task state from agent back to session.
-	if agent.TaskState != nil {
-		cw.TaskState = agent.TaskState
-	}
-
-	// Accumulate agent stats into session lifetime stats.
-	stats.TotalInput += agent.Stats.TotalInput
-	stats.TotalOutput += agent.Stats.TotalOutput
-	stats.Exchanges += agent.Stats.Exchanges
 
 	// Save to session (append to raw Messages, not compressed).
 	appendMessage(cw, message{Role: "user", Content: req.Message, ApiRequest: apiRequestText})
 	appendMessage(cw, message{Role: "assistant", Content: result})
-
-	// Post-process: extract facts for facts strategy.
-	if getStrategy(cw) == strategyFacts {
-		if err := maybeExtractFacts(apiKey, cw, &stats); err != nil {
-			// Non-fatal: log but continue.
-		} else if len(cw.Facts) > 0 {
-			sseWrite(w, map[string]any{
-				"type":  "facts_updated",
-				"facts": cw.Facts,
-			})
-		}
-	}
-
-	// Auto-update profile/project memory.
-	if cw.Settings.Profile != "" || cw.Settings.Project != "" {
-		if err := maybeUpdateMemory(apiKey, cw, &stats); err != nil {
-			fmt.Fprintf(os.Stderr, "[memory_update] error: %v\n", err)
-		} else {
-			sseWrite(w, map[string]any{"type": "memory_updated"})
-		}
-	}
 
 	cw.Settings.Model = cfg.model
 	cw.Settings.Temperature = cfg.temperature
@@ -607,4 +683,51 @@ func handleMemoryItem(w http.ResponseWriter, r *http.Request, name, dir string) 
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// ─── Settings endpoints ──────────────────────────────────────────────────────
+
+func handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	provider, localURL, localModel := globalProvider.get()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"provider":   provider,
+		"localURL":   localURL,
+		"localModel": localModel,
+	})
+}
+
+func handlePostSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Provider   string `json:"provider"`
+		LocalURL   string `json:"localURL"`
+		LocalModel string `json:"localModel"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate provider value.
+	if req.Provider != "claude" && req.Provider != "local" {
+		http.Error(w, `provider must be "claude" or "local"`, http.StatusBadRequest)
+		return
+	}
+
+	// When provider is local, localURL is required.
+	if req.Provider == "local" && req.LocalURL == "" {
+		http.Error(w, "localURL is required when provider is local", http.StatusBadRequest)
+		return
+	}
+
+	globalProvider.set(req.Provider, req.LocalURL, req.LocalModel)
+
+	provider, localURL, localModel := globalProvider.get()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"status":     "updated",
+		"provider":   provider,
+		"localURL":   localURL,
+		"localModel": localModel,
+	})
 }
