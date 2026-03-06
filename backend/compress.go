@@ -127,7 +127,7 @@ func summarize(apiKey string, prevSummary string, msgs []message) (string, token
 	}
 
 	body, _ := json.Marshal(map[string]any{
-		"model":      "claude-sonnet-4-5-20250929",
+		"model":      DefaultModel,
 		"max_tokens": 512,
 		"system":     "Summarize the following conversation concisely, preserving key facts, decisions, and context needed for continuation. If a previous summary is provided, merge it with the new conversation into one unified summary. Be brief.",
 		"messages": []map[string]string{

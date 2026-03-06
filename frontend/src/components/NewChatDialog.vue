@@ -33,9 +33,9 @@ const strategies: { value: ContextStrategy; label: string }[] = [
 ]
 
 const models = [
-  'claude-sonnet-4-5-20250929',
-  'claude-3-5-haiku-20241022',
-  'claude-opus-4-20250514',
+  'claude-sonnet-4-6',
+  'claude-haiku-4-5',
+  'claude-opus-4-6',
   'gpt-4o-mini',
   'gpt-4o',
 ]

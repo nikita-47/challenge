@@ -105,6 +105,10 @@ func runChat(apiKey, openaiKey string, cfg config) {
 	}
 
 	stats := cw.Stats.toTokenStats()
+	stats.Model = cfg.model
+	if stats.Model == "" {
+		stats.Model = DefaultModel
+	}
 	if len(cw.Messages) > 0 {
 		name := sessionName
 		if name == "" {
@@ -140,7 +144,10 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			continue
 		case input == "/clear":
 			cw = &contextWindow{}
-			stats = tokenStats{}
+			stats = tokenStats{Model: cfg.model}
+			if stats.Model == "" {
+				stats.Model = DefaultModel
+			}
 			if err := deleteSession(sessionName); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: failed to delete session file: %v\n", err)
 			}

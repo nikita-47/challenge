@@ -95,7 +95,7 @@ func extractFacts(apiKey string, existing map[string]string, msgs []message) (ma
 	}
 
 	body, _ := json.Marshal(map[string]any{
-		"model":      "claude-sonnet-4-5-20250929",
+		"model":      DefaultModel,
 		"max_tokens": 512,
 		"system": `Extract key facts from this conversation exchange. Output ONLY a JSON object with updated/new key-value pairs.
 Rules:

@@ -135,7 +135,7 @@ func buildSystemPrompt(cfg config) string {
 
 func buildRequest(cfg config, msgs []message) map[string]any {
 	req := map[string]any{
-		"model":      "claude-sonnet-4-5-20250929",
+		"model":      DefaultModel,
 		"max_tokens": cfg.maxTokens,
 		"messages":   msgs,
 		"stream":     true,

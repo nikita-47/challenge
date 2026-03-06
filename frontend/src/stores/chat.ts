@@ -3,6 +3,14 @@ import { ref, computed } from 'vue'
 import type { ChatMessage, ToolCall, TokenUsage, ChatSettings, BranchInfo, TaskState } from '@/lib/types'
 import { streamRequest } from '@/composables/useSSE'
 
+// Per-model pricing (USD per 1M tokens). Mirrors backend/models.go.
+const defaultPricing = { costIn: 3.0, costOut: 15.0 }
+const modelPricing: Record<string, { costIn: number; costOut: number }> = {
+  'claude-sonnet-4-6': defaultPricing,
+  'claude-haiku-4-5': { costIn: 1.0, costOut: 5.0 },
+  'claude-opus-4-6': { costIn: 5.0, costOut: 25.0 },
+}
+
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const isStreaming = ref(false)
@@ -24,7 +32,8 @@ export const useChatStore = defineStore('chat', () => {
   let abortController: AbortController | null = null
 
   const totalCost = computed(() => {
-    return totalUsage.value.input * 3.0 / 1e6 + totalUsage.value.output * 15.0 / 1e6
+    const p = modelPricing[settings.value?.model ?? ''] ?? defaultPricing
+    return totalUsage.value.input * p.costIn / 1e6 + totalUsage.value.output * p.costOut / 1e6
   })
 
   function setSettings(s: ChatSettings | null) {

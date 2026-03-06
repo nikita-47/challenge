@@ -139,11 +139,12 @@ func startServer(apiKey string, cfg config) {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		model := "claude-sonnet-4-5-20250929"
+		model := DefaultModel
 		if cfg.model != "" {
 			model = cfg.model
 		}
 		provider, localURL, localModel := globalProvider.get()
+		p := PricingFor(model)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
 			"model":       model,
@@ -153,6 +154,8 @@ func startServer(apiKey string, cfg config) {
 			"provider":    provider,
 			"localURL":    localURL,
 			"localModel":  localModel,
+			"costIn":      p.CostIn,
+			"costOut":     p.CostOut,
 		})
 	})
 
@@ -482,6 +485,10 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 
 	// Restore cumulative stats from session (or start fresh).
 	stats := cw.Stats.toTokenStats()
+	stats.Model = cfg.model
+	if stats.Model == "" {
+		stats.Model = DefaultModel
+	}
 
 	// Pre-process context (compress for summary strategy, noop for others).
 	ci, compErr := maybeProcess(apiKey, cw, &stats)

@@ -808,7 +808,7 @@ func streamToPanelOpenAI(ctx context.Context, baseURL, apiKey, model string, cfg
 }
 
 func streamToPanelAnthropic(ctx context.Context, apiKey string, cfg config, msgs []message, ss *splitScreen, p *panel) (string, *metrics, error) {
-	m := &metrics{model: "claude-sonnet-4-5-20250929"}
+	m := &metrics{model: DefaultModel}
 	start := time.Now()
 
 	body, _ := json.Marshal(buildRequest(cfg, msgs))
@@ -948,7 +948,7 @@ func runModelComparison(anthropicKey, openaiKey string, cfg config, question str
 	models := [3]modelInfo{
 		{name: "Qwen2.5-1.5B (local)", provider: "Local", baseURL: "http://localhost:1234", model: "qwen2.5-coder-1.5b-instruct", costIn: 0, costOut: 0},
 		{name: "GPT-4o-mini", provider: "OpenAI", baseURL: "https://api.openai.com", apiKey: openaiKey, model: "gpt-4o-mini", costIn: 0.15, costOut: 0.60},
-		{name: "Claude Sonnet", provider: "Anthropic", apiKey: anthropicKey, model: "claude-sonnet-4-5-20250929", costIn: 3.00, costOut: 15.00},
+		{name: "Claude Sonnet", provider: "Anthropic", apiKey: anthropicKey, model: DefaultModel, costIn: PricingFor(DefaultModel).CostIn, costOut: PricingFor(DefaultModel).CostOut},
 	}
 
 	var results [3]*metrics

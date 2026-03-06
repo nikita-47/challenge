@@ -86,7 +86,7 @@ type Agent struct {
 // ─── Constructors ─────────────────────────────────────────────────────────────
 
 func newAgent(apiKey string, cfg config) *Agent {
-	model := "claude-sonnet-4-5-20250929"
+	model := DefaultModel
 	if cfg.model != "" {
 		model = cfg.model
 	}
@@ -98,6 +98,7 @@ func newAgent(apiKey string, cfg config) *Agent {
 		apiKey:      apiKey,
 		model:       model,
 		maxTurns:    10,
+		Stats:       tokenStats{Model: model},
 		maxTokens:   maxTokens,
 		system:      cfg.system,
 		temperature: cfg.temperature,

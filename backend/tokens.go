@@ -10,6 +10,7 @@ type tokenUsage struct {
 }
 
 type tokenStats struct {
+	Model              string // model ID for pricing lookup
 	TotalInput         int
 	TotalOutput        int
 	Exchanges          int
@@ -30,15 +31,13 @@ func (s *tokenStats) TotalTokens() int {
 	return s.TotalInput + s.TotalOutput
 }
 
-// TotalCost returns cost in USD.
-// Claude Sonnet 4.5 pricing:
-// Input: $3/M, Output: $15/M
-// Cache write: $3.75/M, Cache read: $0.30/M
+// TotalCost returns cost in USD using pricing for s.Model.
 func (s *tokenStats) TotalCost() float64 {
-	return float64(s.TotalInput)*3.0/1e6 +
-		float64(s.TotalOutput)*15.0/1e6 +
-		float64(s.CacheCreationInput)*3.75/1e6 +
-		float64(s.CacheReadInput)*0.30/1e6
+	p := PricingFor(s.Model)
+	return float64(s.TotalInput)*p.CostIn/1e6 +
+		float64(s.TotalOutput)*p.CostOut/1e6 +
+		float64(s.CacheCreationInput)*p.CacheWriteIn/1e6 +
+		float64(s.CacheReadInput)*p.CacheReadIn/1e6
 }
 
 func formatTokenUsage(u tokenUsage) string {

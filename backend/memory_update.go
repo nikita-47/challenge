@@ -151,7 +151,7 @@ Rules:
 	prompt.WriteString("Should the document be updated? If yes, provide the full updated document. If no, respond NO_UPDATE.")
 
 	body, _ := json.Marshal(map[string]any{
-		"model":      "claude-3-5-haiku-20241022",
+		"model":      ModelHaiku,
 		"max_tokens": 1024,
 		"system":     systemPrompt,
 		"messages": []map[string]string{

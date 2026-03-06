@@ -109,7 +109,8 @@ func printBanner(cfg config, openaiKey string) {
 		fmt.Printf("Endpoint:   %s\n", cfg.baseURL)
 		fmt.Printf("Model:      %s\n", modelName)
 	} else {
-		fmt.Printf("Model:      claude-sonnet-4-5-20250929 ($3/$15 per 1M tokens)\n")
+		p := PricingFor(DefaultModel)
+		fmt.Printf("Model:      %s ($%.0f/$%.0f per 1M tokens)\n", DefaultModel, p.CostIn, p.CostOut)
 	}
 	fmt.Printf("Max tokens: %d\n", cfg.maxTokens)
 	if cfg.system != "" {
