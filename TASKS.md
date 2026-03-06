@@ -319,6 +319,33 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 15 — Token Optimization + Invariants + Prompt Caching ✅
+
+**Assignment:** Optimize agent loop token consumption: compress old tool results, add efficiency rules to phase prompts, reduce maxTurns, add prompt caching with cache_control. Add invariants (user-defined constraints) to task mode. Add shared sandbox across task phases.
+
+**What was built on top of previous day:**
+- `backend/agent.go` — `compactHistory()` compresses old tool_result/text blocks after each turn (keeps last 4 messages intact), `compactToolResult()` summarizes to one-line `[output: ... (N lines)]`, `formatStepProgress()` injects completed steps into goal message for orientation after compaction, `buildPayload()` adds `cache_control: ephemeral` to system prompt and last tool for prompt caching, `apiResponse.Usage` extended with `CacheCreationInput`/`CacheReadInput`, tool output truncation in `executeTool()` (run_shell 4K, read_file 8K), maxTurns reduced (executing 20→12, validating 10→6)
+- `backend/taskstate.go` — `Invariants` field on `TaskState`, `formatInvariantsBlock()` generates INVARIANTS section for all phase prompts, `EnsureSandbox()`/`CleanupSandbox()` for shared sandbox across phases, `buildPlanningPrompt()` "MINIMAL plan 2-4 steps", `buildExecutingPrompt()` "Efficiency Rules" block, `buildValidatingPrompt()` "Be decisive: 2-3 tool calls"
+- `backend/tokens.go` — `CacheCreationInput`/`CacheReadInput` in `tokenUsage`/`tokenStats`, updated `TotalCost()` with cache pricing ($3.75/M write, $0.30/M read), cache info in `formatTokenUsage()`/`FormatTotal()`
+- `backend/history.go` — `CacheCreationInput`/`CacheReadInput` in `sessionStats`, round-trip to `tokenStats`
+- `backend/server.go` — shared sandbox via `ts.EnsureSandbox()`, cleanup on task done, `Invariants` in `chatRequest`, phase constructors use shared `sandboxDir`
+- `backend/chat.go` — old sandbox cleanup when starting new task
+- `frontend/src/components/SendSettingsPopover.vue` — invariants CRUD: add/remove rules with `!` badge, stored as string array
+- `frontend/src/components/TaskStatePanel.vue` — invariants display in task panel
+- `frontend/src/components/ChatInfoPanel.vue` — invariants display in info panel
+- `frontend/src/components/ChatInput.vue` — passes invariants to `startTask()`
+- `frontend/src/stores/chat.ts` — `startTask()` accepts invariants, sends in request body
+- `frontend/src/lib/types.ts` — `invariants?: string[]` on `TaskState`
+
+**Prod test results (bubble sort, 2 invariants):**
+- Planning: 1 turn, Executing: 5 turns, Validating: 2 turns = 8 total
+- 13,361 input / 1,800 output tokens, $0.067
+- vs baseline: 60,167 input, $0.42 → **-78% tokens, -84% cost**
+
+**Key code:** `compactHistory()`, `compactToolResult()`, `formatStepProgress()`, `formatInvariantsBlock()`, `EnsureSandbox()`, `CleanupSandbox()`, cache_control in `buildPayload()`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

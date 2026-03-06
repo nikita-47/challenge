@@ -9,6 +9,7 @@ const input = ref('')
 const textarea = ref<HTMLTextAreaElement | null>(null)
 const taskMode = ref(false)
 const enabledTools = ref(['run_shell', 'read_file'])
+const invariants = ref<string[]>([])
 
 function send() {
   const text = input.value.trim()
@@ -20,8 +21,9 @@ function send() {
     textarea.value.style.height = 'auto'
   }
   if (taskMode.value) {
-    chat.startTask(text, enabledTools.value)
+    chat.startTask(text, enabledTools.value, invariants.value)
     taskMode.value = false
+    invariants.value = []
   } else {
     chat.sendMessage(text)
   }
@@ -68,6 +70,7 @@ function autoGrow(e: Event) {
           v-if="!chat.isStreaming && !chat.taskState"
           v-model:task-mode="taskMode"
           v-model:enabled-tools="enabledTools"
+          v-model:invariants="invariants"
         />
         <Button
           v-if="chat.isStreaming"

@@ -110,6 +110,19 @@ function stepClass(status: string) {
       </Button>
     </div>
 
+    <!-- Invariants -->
+    <div v-if="chat.taskState?.invariants?.length" class="space-y-0.5">
+      <p class="text-[10px] text-red-400/70 font-medium">invariants</p>
+      <div
+        v-for="(inv, index) in chat.taskState.invariants"
+        :key="index"
+        class="flex items-start gap-1.5 text-xs"
+      >
+        <span class="text-red-400/50 shrink-0 text-[10px]">!</span>
+        <span class="text-muted-foreground break-words">{{ inv }}</span>
+      </div>
+    </div>
+
     <!-- Steps list -->
     <div v-if="chat.taskState && chat.taskState.steps.length > 0" class="space-y-0.5">
       <div

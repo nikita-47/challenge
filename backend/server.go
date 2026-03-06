@@ -205,10 +205,12 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 		return runTaskPhaseLocal(localURL, localModel, cfg, cw, emit)
 	}
 
+	// Ensure a single sandbox directory is shared across all phases of this task.
+	sandbox := ts.EnsureSandbox()
+
 	switch ts.Phase {
 	case PhasePlanning:
-		agent := newPlanningAgent(apiKey, cfg, ts)
-		defer agent.Cleanup()
+		agent := newPlanningAgent(apiKey, cfg, ts, sandbox)
 		_, err := agent.Run(ts.Goal, nil, emit)
 		if err != nil {
 			ts.Error = err.Error()
@@ -235,8 +237,7 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 		}
 
 	case PhaseExecuting:
-		agent := newExecutingAgent(apiKey, cfg, ts, enabledTools)
-		defer agent.Cleanup()
+		agent := newExecutingAgent(apiKey, cfg, ts, enabledTools, sandbox)
 		_, err := agent.Run("Execute the plan", nil, emit)
 		// Even on error (e.g. max turns), save what was done.
 		if err != nil {
@@ -259,8 +260,7 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 		ts.Paused = true
 
 	case PhaseValidating:
-		agent := newValidatingAgent(apiKey, cfg, ts)
-		defer agent.Cleanup()
+		agent := newValidatingAgent(apiKey, cfg, ts, sandbox)
 		_, err := agent.Run("Validate the results", nil, emit)
 		if err != nil {
 			ts.Error = err.Error()
@@ -278,6 +278,8 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 			if val.Passed {
 				ts.Phase = PhaseDone
 				ts.Paused = false
+				// Task is done — release the shared sandbox.
+				ts.CleanupSandbox()
 			} else {
 				ts.Feedback = val.Feedback
 				if val.NextPhase == PhasePlanning {
@@ -422,6 +424,7 @@ type chatRequest struct {
 	Operator     string   `json:"operator"`
 	TaskMode     bool     `json:"taskMode"`
 	EnabledTools []string `json:"enabledTools"`
+	Invariants   []string `json:"invariants"`
 }
 
 func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
@@ -516,9 +519,10 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 	if isTaskMode {
 		if cw.TaskState == nil {
 			cw.TaskState = &TaskState{
-				Goal:      req.Message,
-				Phase:     PhasePlanning,
-				Artifacts: make(map[string]string),
+				Goal:       req.Message,
+				Phase:      PhasePlanning,
+				Artifacts:  make(map[string]string),
+				Invariants: req.Invariants,
 			}
 		}
 

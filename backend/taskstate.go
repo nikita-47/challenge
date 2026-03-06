@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 )
@@ -37,14 +38,51 @@ type StepResult struct {
 
 type TaskState struct {
 	Goal            string            `json:"goal"`
-	Phase           string            `json:"phase"`       // planning|executing|validating|done
-	Paused          bool              `json:"paused"`      // true = ждём Continue от пользователя
+	Phase           string            `json:"phase"`              // planning|executing|validating|done
+	Paused          bool              `json:"paused"`             // true = ждём Continue от пользователя
 	Steps           []TaskStep        `json:"steps"`
 	StepResults     []StepResult      `json:"step_results"`
-	Artifacts       map[string]string `json:"artifacts"`   // "plan_summary", "exec_log", "validation"
+	Artifacts       map[string]string `json:"artifacts"`          // "plan_summary", "exec_log", "validation"
 	Feedback        string            `json:"feedback,omitempty"` // от неудачной валидации
 	ValidationCount int               `json:"validation_count"`
 	Error           string            `json:"error,omitempty"`
+	Invariants      []string          `json:"invariants,omitempty"`
+	SandboxDir      string            `json:"sandbox_dir,omitempty"` // shared sandbox across phases
+}
+
+// EnsureSandbox returns the existing shared sandbox directory, or creates one if it doesn't exist.
+func (ts *TaskState) EnsureSandbox() string {
+	if ts.SandboxDir != "" {
+		return ts.SandboxDir
+	}
+	ts.SandboxDir = createSandbox()
+	return ts.SandboxDir
+}
+
+// CleanupSandbox removes the shared sandbox directory and clears the field.
+func (ts *TaskState) CleanupSandbox() {
+	if ts.SandboxDir == "" {
+		return
+	}
+	os.RemoveAll(ts.SandboxDir)
+	ts.SandboxDir = ""
+}
+
+func formatInvariantsBlock(invariants []string) string {
+	if len(invariants) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("\n## INVARIANTS (MUST NOT BE VIOLATED)\n\n")
+	b.WriteString("The following invariants are absolute constraints. You MUST:\n")
+	b.WriteString("- Consider each invariant before any action or suggestion\n")
+	b.WriteString("- REFUSE to propose solutions that violate any invariant\n")
+	b.WriteString("- Explicitly state which invariants you checked in your reasoning\n")
+	b.WriteString("- If a request conflicts with an invariant, explain the conflict and refuse\n\n")
+	for i, inv := range invariants {
+		b.WriteString(fmt.Sprintf("%d. %s\n", i+1, inv))
+	}
+	return b.String()
 }
 
 // ─── Phase-specific system prompts ──────────────────────────────────────────
@@ -59,7 +97,10 @@ func buildPlanningPrompt(ts *TaskState) string {
 	if ts.Feedback != "" {
 		b.WriteString(fmt.Sprintf("\nFeedback from previous attempt (incorporate this into your new plan):\n%s\n", ts.Feedback))
 	}
-	b.WriteString("\nCreate a clear, step-by-step plan and submit it using submit_plan.")
+	b.WriteString("\nCreate a MINIMAL plan with 2-4 steps maximum. Each step = one focused action.\n")
+	b.WriteString("Do not add documentation, README, or cleanup steps unless explicitly requested.\n")
+	b.WriteString("Submit the plan using submit_plan.")
+	b.WriteString(formatInvariantsBlock(ts.Invariants))
 	return b.String()
 }
 
@@ -88,6 +129,13 @@ func buildExecutingPrompt(ts *TaskState) string {
 	} else {
 		b.WriteString("Execute each step in order. Report the result of each step using report_step.\n")
 	}
+	b.WriteString("\n## Efficiency Rules\n")
+	b.WriteString("- Write complete files in one run_shell with heredoc. Do NOT build incrementally.\n")
+	b.WriteString("- Do NOT re-read files you just wrote.\n")
+	b.WriteString("- Do NOT create README, docs, or test files unless explicitly in the plan.\n")
+	b.WriteString("- Combine related operations into one shell command.\n")
+	b.WriteString("- Call report_step immediately after each step, then move to the next.\n")
+	b.WriteString(formatInvariantsBlock(ts.Invariants))
 	return b.String()
 }
 
@@ -114,7 +162,9 @@ func buildValidatingPrompt(ts *TaskState) string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("Verify the results and submit your validation decision.")
+	b.WriteString("Be decisive: verify the core requirement in 2-3 tool calls, then call submit_validation immediately.\n")
+	b.WriteString("Do not exhaustively test edge cases or create additional test files.")
+	b.WriteString(formatInvariantsBlock(ts.Invariants))
 	return b.String()
 }
 
@@ -133,6 +183,7 @@ func buildPlanningPromptLocal(ts *TaskState) string {
 	if ts.Feedback != "" {
 		b.WriteString(fmt.Sprintf("\nFeedback from previous attempt (incorporate this):\n%s\n", ts.Feedback))
 	}
+	b.WriteString(formatInvariantsBlock(ts.Invariants))
 	return b.String()
 }
 
@@ -152,6 +203,7 @@ func buildExecutingPromptLocal(ts *TaskState) string {
 		b.WriteString("\n")
 	}
 	b.WriteString("Describe the execution of each step in detail.")
+	b.WriteString(formatInvariantsBlock(ts.Invariants))
 	return b.String()
 }
 
@@ -184,6 +236,7 @@ func buildValidatingPromptLocal(ts *TaskState) string {
 		b.WriteString("\n\n")
 	}
 	b.WriteString("Evaluate the results and output RESULT: PASS or RESULT: FAIL with FEEDBACK.")
+	b.WriteString(formatInvariantsBlock(ts.Invariants))
 	return b.String()
 }
 

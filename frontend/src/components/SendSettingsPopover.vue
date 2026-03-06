@@ -7,15 +7,18 @@ import { Separator } from '@/components/ui/separator'
 const props = defineProps<{
   taskMode: boolean
   enabledTools: string[]
+  invariants: string[]
 }>()
 
 const emit = defineEmits<{
   'update:taskMode': [value: boolean]
   'update:enabledTools': [value: string[]]
+  'update:invariants': [value: string[]]
 }>()
 
 const isOpen = ref(false)
 const popoverRef = ref<HTMLDivElement | null>(null)
+const newInvariant = ref('')
 
 onClickOutside(popoverRef, () => {
   isOpen.value = false
@@ -37,6 +40,19 @@ function toggleTool(tool: string, checked: boolean) {
   } else {
     emit('update:enabledTools', props.enabledTools.filter((t) => t !== tool))
   }
+}
+
+function addInvariant() {
+  const text = newInvariant.value.trim()
+  if (!text) {
+    return
+  }
+  emit('update:invariants', [...props.invariants, text])
+  newInvariant.value = ''
+}
+
+function removeInvariant(index: number) {
+  emit('update:invariants', props.invariants.filter((_, i) => i !== index))
 }
 </script>
 
@@ -68,7 +84,7 @@ function toggleTool(tool: string, checked: boolean) {
 
     <div
       v-if="isOpen"
-      class="absolute bottom-full right-0 mb-2 w-48 bg-card border border-border shadow-lg rounded-sm p-3 flex flex-col gap-2 z-50"
+      class="absolute bottom-full right-0 mb-2 w-64 bg-card border border-border shadow-lg rounded-sm p-3 flex flex-col gap-2 z-50"
     >
       <p class="text-xs text-muted-foreground font-medium">Send settings</p>
 
@@ -105,6 +121,42 @@ function toggleTool(tool: string, checked: boolean) {
           <label for="tool-read-file" class="text-xs text-foreground cursor-pointer select-none font-mono">
             read_file
           </label>
+        </div>
+
+        <Separator />
+        <p class="text-xs text-muted-foreground">Invariants</p>
+
+        <div v-if="invariants.length > 0" class="flex flex-col gap-1">
+          <div
+            v-for="(inv, index) in invariants"
+            :key="index"
+            class="flex items-start gap-1.5"
+          >
+            <span class="text-red-400/70 text-[10px] shrink-0 mt-0.5">!</span>
+            <span class="text-xs text-foreground flex-1 break-words">{{ inv }}</span>
+            <button
+              class="text-muted-foreground hover:text-red-400 text-xs shrink-0 leading-none"
+              @click="removeInvariant(index)"
+            >
+              &times;
+            </button>
+          </div>
+        </div>
+
+        <div class="flex gap-1">
+          <input
+            v-model="newInvariant"
+            type="text"
+            placeholder="Add rule..."
+            class="flex-1 text-xs px-2 py-1 bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/40 min-w-0"
+            @keydown.enter.prevent="addInvariant"
+          />
+          <button
+            class="px-2 py-1 text-xs border border-border text-muted-foreground hover:text-foreground hover:border-border/80 shrink-0"
+            @click="addInvariant"
+          >
+            +
+          </button>
         </div>
       </template>
     </div>

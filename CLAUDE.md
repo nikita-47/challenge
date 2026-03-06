@@ -26,6 +26,9 @@
 - **Frontend стек**: Vue 3 + Vite + Tailwind CSS v4 + Pinia + marked + shadcn-vue (radix-vue, class-variance-authority)
 - **Загрузка `.env`**: собственный парсер, без сторонних dotenv-библиотек
 - **Модель памяти**: 4 слоя — краткосрочная (сообщения чата), рабочая (`.memory/projects/*.md`), долгосрочная (`.memory/profiles/*.md`), операторская (`.memory/operators/*.md`, неизменяемая). Порядок в `buildFullSystemPrompt()`: operator → profile → project → system prompt. Profile/project автообновляются через `maybeUpdateMemory()` (Haiku) после каждого обмена. Сохраняется в `sessionSettings`.
+- **Оптимизация токенов агента**: `compactHistory()` сжимает tool_result блоки старше 2 turns в однострочные summary, `formatStepProgress()` инжектит прогресс в goal message. Prompt caching через `cache_control: ephemeral` на system prompt и последнем tool. Efficiency Rules в промптах фаз. Результат: -78% input tokens, -84% стоимость.
+- **Инварианты**: пользовательские ограничения (invariants) передаются при создании задачи и инжектируются во все phase prompts через `formatInvariantsBlock()`. Агент обязан проверять инварианты перед каждым действием.
+- **Shared sandbox**: все фазы задачи работают в одной песочнице (`TaskState.SandboxDir`), создаётся через `EnsureSandbox()`, удаляется через `CleanupSandbox()` при завершении задачи.
 
 ## Рабочий процесс
 

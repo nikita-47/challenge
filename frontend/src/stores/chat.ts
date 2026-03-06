@@ -91,7 +91,11 @@ export const useChatStore = defineStore('chat', () => {
     const body = {
       message: text,
       session: currentSession.value,
-      ...(taskState.value && { taskMode: true, enabledTools: activeEnabledTools.value }),
+      ...(taskState.value && {
+        taskMode: true,
+        enabledTools: activeEnabledTools.value,
+        invariants: taskState.value.invariants,
+      }),
       ...(settings.value && {
         model: settings.value.model,
         system: settings.value.system,
@@ -242,12 +246,13 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function startTask(goal: string, enabledTools?: string[]) {
+  function startTask(goal: string, enabledTools?: string[], invariants?: string[]) {
     activeEnabledTools.value = enabledTools ?? []
     taskState.value = {
       goal,
       phase: 'planning',
       paused: false,
+      invariants: invariants?.length ? invariants : undefined,
       steps: [],
       step_results: [],
       artifacts: {},

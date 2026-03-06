@@ -183,6 +183,16 @@ watch(() => chat.messages.length, () => {
               {{ chat.taskState.goal }}
             </p>
           </div>
+          <div v-if="chat.taskState?.invariants?.length" class="space-y-1">
+            <span class="text-muted-foreground">invariants</span>
+            <div
+              v-for="(inv, index) in chat.taskState.invariants"
+              :key="index"
+              class="text-xs text-red-400/70 bg-background border border-red-400/10 p-1.5 break-words"
+            >
+              {{ index + 1 }}. {{ inv }}
+            </div>
+          </div>
         </div>
 
         <!-- Strategy -->

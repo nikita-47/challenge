@@ -51,17 +51,20 @@ type contentBlock struct {
 }
 
 type toolDef struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	InputSchema any    `json:"input_schema"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	InputSchema  any            `json:"input_schema"`
+	CacheControl map[string]any `json:"cache_control,omitempty"`
 }
 
 type apiResponse struct {
 	Content    []contentBlock `json:"content"`
 	StopReason string         `json:"stop_reason"`
 	Usage      struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+		InputTokens        int `json:"input_tokens"`
+		OutputTokens       int `json:"output_tokens"`
+		CacheCreationInput int `json:"cache_creation_input_tokens"`
+		CacheReadInput     int `json:"cache_read_input_tokens"`
 	} `json:"usage"`
 }
 
@@ -125,16 +128,16 @@ func filterTools(tools []toolDef, enabled []string) []toolDef {
 
 // ─── Phase-specific agent constructors ───────────────────────────────────────
 
-func newPlanningAgent(apiKey string, cfg config, ts *TaskState) *Agent {
+func newPlanningAgent(apiKey string, cfg config, ts *TaskState, sandboxDir string) *Agent {
 	a := newAgent(apiKey, cfg)
 	a.system = buildPlanningPrompt(ts)
 	a.tools = []toolDef{submitPlanTool()}
 	a.maxTurns = 5
-	a.workDir = createSandbox()
+	a.workDir = sandboxDir
 	return a
 }
 
-func newExecutingAgent(apiKey string, cfg config, ts *TaskState, enabledTools []string) *Agent {
+func newExecutingAgent(apiKey string, cfg config, ts *TaskState, enabledTools []string, sandboxDir string) *Agent {
 	a := newAgent(apiKey, cfg)
 	a.system = buildExecutingPrompt(ts)
 	// Base tools for execution: run_shell, read_file, report_step.
@@ -144,17 +147,17 @@ func newExecutingAgent(apiKey string, cfg config, ts *TaskState, enabledTools []
 	}
 	// Always include report_step.
 	a.tools = append(base, reportStepTool())
-	a.maxTurns = 20
-	a.workDir = createSandbox()
+	a.maxTurns = 12
+	a.workDir = sandboxDir
 	return a
 }
 
-func newValidatingAgent(apiKey string, cfg config, ts *TaskState) *Agent {
+func newValidatingAgent(apiKey string, cfg config, ts *TaskState, sandboxDir string) *Agent {
 	a := newAgent(apiKey, cfg)
 	a.system = buildValidatingPrompt(ts)
 	a.tools = append(defaultTools(), submitValidationTool())
-	a.maxTurns = 10
-	a.workDir = createSandbox()
+	a.maxTurns = 6
+	a.workDir = sandboxDir
 	return a
 }
 
@@ -320,6 +323,10 @@ func executeTool(name string, rawInput json.RawMessage, workDir string) (string,
 		if err != nil {
 			result += "\nexit error: " + err.Error()
 		}
+		// Truncate long tool output to prevent token bloat in agent history.
+		if len(result) > 4000 {
+			result = result[:2000] + "\n\n... [truncated " + strconv.Itoa(len(result)-4000) + " chars] ...\n\n" + result[len(result)-2000:]
+		}
 		return result, false
 
 	case "read_file":
@@ -338,7 +345,12 @@ func executeTool(name string, rawInput json.RawMessage, workDir string) (string,
 		if err != nil {
 			return "error reading file: " + err.Error(), true
 		}
-		return string(data), false
+		content := string(data)
+		// Truncate long file content to prevent token bloat in agent history.
+		if len(content) > 8000 {
+			content = content[:4000] + "\n\n... [truncated " + strconv.Itoa(len(content)-8000) + " chars] ...\n\n" + content[len(content)-4000:]
+		}
+		return content, false
 
 	default:
 		return "unknown tool: " + name, true
@@ -354,14 +366,25 @@ func (a *Agent) buildPayload() map[string]any {
 		"messages":   a.history,
 	}
 	if len(a.tools) > 0 {
-		payload["tools"] = a.tools
+		// Add cache_control to the last tool for prompt caching.
+		tools := make([]toolDef, len(a.tools))
+		copy(tools, a.tools)
+		tools[len(tools)-1].CacheControl = map[string]any{"type": "ephemeral"}
+		payload["tools"] = tools
 	}
 	sys := a.system
 	if a.workDir != "" {
 		sys += fmt.Sprintf("\n\nYour working directory is: %s\nAll shell commands execute there. Files you create will be in this sandbox.", a.workDir)
 	}
 	if sys != "" {
-		payload["system"] = sys
+		// Send system as array of content blocks with cache_control for prompt caching.
+		payload["system"] = []map[string]any{
+			{
+				"type":          "text",
+				"text":          sys,
+				"cache_control": map[string]any{"type": "ephemeral"},
+			},
+		}
 	}
 	if a.temperature > 0 {
 		payload["temperature"] = a.temperature
@@ -464,6 +487,12 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 	}
 
 	for turn := 1; turn <= a.maxTurns; turn++ {
+		// Inject progress into goal message so the model sees completed steps
+		// after old history has been compacted.
+		if turn > 1 && len(a.StepResults) > 0 {
+			a.history[0].Content = goal + "\n\nCompleted so far:\n" + formatStepProgress(a.StepResults)
+		}
+
 		emit(AgentEvent{Type: "turn", Turn: turn, MaxTurn: a.maxTurns})
 
 		if turn == 1 {
@@ -479,7 +508,12 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 		}
 
 		// Track tokens.
-		usage := tokenUsage{InputTokens: resp.Usage.InputTokens, OutputTokens: resp.Usage.OutputTokens}
+		usage := tokenUsage{
+			InputTokens:        resp.Usage.InputTokens,
+			OutputTokens:       resp.Usage.OutputTokens,
+			CacheCreationInput: resp.Usage.CacheCreationInput,
+			CacheReadInput:     resp.Usage.CacheReadInput,
+		}
 		a.Stats.Add(usage)
 		emit(AgentEvent{Type: "usage", Usage: &usage})
 
@@ -572,6 +606,9 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 			a.history = append(a.history, message{Role: "user", Content: toolResults})
 		}
 
+		// Compact old history to reduce input tokens on next turn.
+		a.compactHistory()
+
 		// If a phase-ending tool was called, exit the loop.
 		if phaseComplete {
 			statsCopy := a.Stats
@@ -583,6 +620,78 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 	statsCopy := a.Stats
 	emit(AgentEvent{Type: "done", Stats: &statsCopy})
 	return "", fmt.Errorf("agent reached max turns (%d) without completing", a.maxTurns)
+}
+
+// formatStepProgress formats completed step results as a short summary for the goal message.
+func formatStepProgress(results []StepResult) string {
+	var b strings.Builder
+	for _, r := range results {
+		status := "✓"
+		if r.Status == "failed" {
+			status = "✗"
+		}
+		output := r.Output
+		if len(output) > 80 {
+			output = output[:80] + "…"
+		}
+		b.WriteString(fmt.Sprintf("  %s Step %d: %s\n", status, r.Index, output))
+	}
+	return b.String()
+}
+
+// ─── History compaction ──────────────────────────────────────────────────────
+
+// compactHistory compresses old tool results and text blocks to reduce input tokens.
+// Keeps the first message (goal) and the last keepRecent messages intact.
+func (a *Agent) compactHistory() {
+	const keepRecent = 4 // last 4 messages (2 turns: assistant + tool_results)
+	cutoff := len(a.history) - keepRecent
+	if cutoff <= 1 {
+		return // always preserve first message (goal)
+	}
+
+	for i := 1; i < cutoff; i++ {
+		blocks, ok := a.history[i].Content.([]contentBlock)
+		if !ok {
+			// String content in assistant/user messages — truncate if long.
+			if s, ok := a.history[i].Content.(string); ok && len(s) > 200 {
+				a.history[i].Content = s[:200] + "…"
+			}
+			continue
+		}
+		for j := range blocks {
+			switch blocks[j].Type {
+			case "tool_result":
+				blocks[j].Content = compactToolResult(blocks[j].Content, blocks[j].ToolUseID)
+			case "text":
+				if len(blocks[j].Text) > 200 {
+					blocks[j].Text = blocks[j].Text[:200] + "…"
+				}
+			}
+		}
+		a.history[i].Content = blocks
+	}
+}
+
+// compactToolResult compresses a tool result string into a short summary.
+func compactToolResult(content string, toolUseID string) string {
+	// Already compacted (starts with "[").
+	if strings.HasPrefix(content, "[") {
+		return content
+	}
+	// "Noted." from report_step — keep as-is.
+	if content == "Noted." || content == "Accepted." {
+		return content
+	}
+
+	lines := strings.SplitN(content, "\n", 2)
+	firstLine := strings.TrimSpace(lines[0])
+	if len(firstLine) > 80 {
+		firstLine = firstLine[:80]
+	}
+
+	lineCount := strings.Count(content, "\n") + 1
+	return fmt.Sprintf("[output: %s (%d lines)]", firstLine, lineCount)
 }
 
 func truncate(s string, maxLen int) string {

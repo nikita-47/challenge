@@ -22,6 +22,7 @@ export interface TaskState {
   goal: string
   phase: TaskPhase
   paused: boolean
+  invariants?: string[]
   steps: TaskStep[]
   step_results: StepResult[]
   artifacts: Record<string, string>

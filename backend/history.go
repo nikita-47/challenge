@@ -25,18 +25,22 @@ type sessionSettings struct {
 }
 
 type sessionStats struct {
-	TotalInput  int `json:"total_input"`
-	TotalOutput int `json:"total_output"`
-	Exchanges   int `json:"exchanges"`
-	TokensSaved int `json:"tokens_saved"`
+	TotalInput         int `json:"total_input"`
+	TotalOutput        int `json:"total_output"`
+	Exchanges          int `json:"exchanges"`
+	TokensSaved        int `json:"tokens_saved"`
+	CacheCreationInput int `json:"cache_creation_input,omitempty"`
+	CacheReadInput     int `json:"cache_read_input,omitempty"`
 }
 
 func statsFromToken(ts tokenStats) *sessionStats {
 	return &sessionStats{
-		TotalInput:  ts.TotalInput,
-		TotalOutput: ts.TotalOutput,
-		Exchanges:   ts.Exchanges,
-		TokensSaved: ts.TokensSaved,
+		TotalInput:         ts.TotalInput,
+		TotalOutput:        ts.TotalOutput,
+		Exchanges:          ts.Exchanges,
+		TokensSaved:        ts.TokensSaved,
+		CacheCreationInput: ts.CacheCreationInput,
+		CacheReadInput:     ts.CacheReadInput,
 	}
 }
 
@@ -45,10 +49,12 @@ func (ss *sessionStats) toTokenStats() tokenStats {
 		return tokenStats{}
 	}
 	return tokenStats{
-		TotalInput:  ss.TotalInput,
-		TotalOutput: ss.TotalOutput,
-		Exchanges:   ss.Exchanges,
-		TokensSaved: ss.TokensSaved,
+		TotalInput:         ss.TotalInput,
+		TotalOutput:        ss.TotalOutput,
+		Exchanges:          ss.Exchanges,
+		TokensSaved:        ss.TokensSaved,
+		CacheCreationInput: ss.CacheCreationInput,
+		CacheReadInput:     ss.CacheReadInput,
 	}
 }
 

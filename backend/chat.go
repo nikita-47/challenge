@@ -218,6 +218,10 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			continue
 		case strings.HasPrefix(input, "/task "):
 			goal := strings.TrimPrefix(input, "/task ")
+			// Clean up the old sandbox if a previous task was active.
+			if cw.TaskState != nil {
+				cw.TaskState.CleanupSandbox()
+			}
 			cw.TaskState = &TaskState{
 				Goal:      goal,
 				Phase:     PhasePlanning,
