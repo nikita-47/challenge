@@ -5,32 +5,43 @@ import { Button } from '@/components/ui/button'
 
 const chat = useChatStore()
 
-const phases = ['planning', 'executing', 'validating', 'done'] as const
+const hasPhases = computed(() => (chat.taskState?.phases?.length ?? 0) > 0)
 
 const completedSteps = computed(() => {
-  if (!chat.taskState) {
+  if (!chat.taskState?.steps) {
     return 0
   }
   return chat.taskState.steps.filter((s) => s.status === 'completed').length
 })
 
-const totalSteps = computed(() => chat.taskState?.steps.length ?? 0)
+const totalSteps = computed(() => chat.taskState?.steps?.length ?? 0)
 
-const nextPhaseLabel = computed(() => {
+const isProposingWithPhases = computed(() => {
+  return chat.taskState?.phase === 'proposing' && hasPhases.value && chat.taskState?.paused
+})
+
+const continueLabel = computed(() => {
   if (!chat.taskState) {
     return ''
   }
-  switch (chat.taskState.phase) {
-    case 'planning':
-      return 'planning'
-    case 'executing':
-      return 'executing'
-    case 'validating':
-      return 'validating'
-    default:
-      return ''
+  if (isProposingWithPhases.value) {
+    return 'approve'
   }
+  return chat.taskState.phase
 })
+
+function phaseStatusClass(status: string) {
+  switch (status) {
+    case 'active':
+      return 'bg-primary/20 text-primary border-primary/40 animate-pulse'
+    case 'completed':
+      return 'bg-green-400/10 text-green-400 border-green-400/30'
+    case 'failed':
+      return 'bg-red-400/10 text-red-400 border-red-400/30'
+    default:
+      return 'text-muted-foreground border-border'
+  }
+}
 
 function stepIcon(status: string) {
   switch (status) {
@@ -61,34 +72,46 @@ function stepClass(status: string) {
     class="border-b border-primary/20 bg-card/50 px-3 py-2 space-y-2"
   >
     <!-- Phase indicators -->
-    <div class="flex items-center gap-1">
+    <div class="flex items-center gap-1 flex-wrap">
       <span class="text-xs text-muted-foreground mr-1">task</span>
-      <div
-        v-for="phase in phases"
-        :key="phase"
-        class="flex items-center gap-1"
-      >
-        <span
-          class="text-[10px] px-1.5 py-0.5 border transition-colors"
-          :class="
-            chat.taskState?.phase === phase
-              ? chat.taskState?.paused
-                ? 'bg-yellow-400/20 text-yellow-400 border-yellow-400/40'
-                : 'bg-primary/20 text-primary border-primary/40 animate-pulse'
-              : phases.indexOf(phase) < phases.indexOf(chat.taskState?.phase as typeof phases[number])
-                ? 'bg-green-400/10 text-green-400 border-green-400/30'
-                : 'text-muted-foreground border-border'
-          "
-        >
-          {{ phase }}
+
+      <!-- Proposing state: no phases yet -->
+      <template v-if="chat.taskState.phase === 'proposing' && !hasPhases">
+        <span class="text-[10px] px-1.5 py-0.5 border bg-primary/20 text-primary border-primary/40 animate-pulse">
+          analyzing...
         </span>
-        <span v-if="phase !== 'done'" class="text-muted-foreground text-[10px]">&rarr;</span>
-      </div>
+      </template>
+
+      <!-- Dynamic phases from pipeline -->
+      <template v-else-if="hasPhases">
+        <div
+          v-for="(phase, index) in chat.taskState.phases"
+          :key="phase.name"
+          class="flex items-center gap-1"
+        >
+          <span
+            class="text-[10px] px-1.5 py-0.5 border transition-colors"
+            :class="
+              isProposingWithPhases
+                ? 'bg-yellow-400/20 text-yellow-400 border-yellow-400/40'
+                : phaseStatusClass(phase.status)
+            "
+            :title="phase.description"
+          >
+            {{ phase.name }}
+          </span>
+          <span
+            v-if="index < (chat.taskState.phases?.length ?? 0) - 1"
+            class="text-muted-foreground text-[10px]"
+          >&rarr;</span>
+        </div>
+      </template>
+
       <div class="flex-1" />
       <span v-if="totalSteps > 0" class="text-xs text-muted-foreground">
         {{ completedSteps }}/{{ totalSteps }}
       </span>
-      <!-- Continue button -->
+      <!-- Continue/Approve button -->
       <Button
         v-if="chat.taskState?.paused && !chat.isStreaming"
         variant="ghost"
@@ -96,7 +119,7 @@ function stepClass(status: string) {
         class="h-5 px-1.5 text-[10px] text-green-400 hover:text-green-300"
         @click="chat.continueTask()"
       >
-        continue {{ nextPhaseLabel }}
+        {{ continueLabel }}
       </Button>
       <!-- Cancel button -->
       <Button
@@ -108,6 +131,34 @@ function stepClass(status: string) {
       >
         cancel
       </Button>
+    </div>
+
+    <!-- Proposed phases detail (when awaiting approval) -->
+    <div v-if="isProposingWithPhases" class="space-y-0.5">
+      <p class="text-[10px] text-yellow-400/70 font-medium">proposed pipeline</p>
+      <div
+        v-for="(phase, index) in chat.taskState.phases"
+        :key="phase.name"
+        class="flex items-start gap-1.5 text-xs"
+      >
+        <span class="text-yellow-400/50 shrink-0 text-[10px] font-mono">{{ index + 1 }}.</span>
+        <span class="text-foreground">
+          <span class="text-primary font-medium">{{ phase.name }}</span>
+          <span class="text-muted-foreground ml-1">[{{ phase.type }}]</span>
+          <span class="text-muted-foreground ml-1">— {{ phase.description }}</span>
+        </span>
+      </div>
+      <p class="text-[10px] text-muted-foreground mt-1">
+        click approve or type feedback to modify
+      </p>
+    </div>
+
+    <!-- Pipeline summary -->
+    <div
+      v-if="chat.taskState?.artifacts?.pipeline_summary && !isProposingWithPhases"
+      class="text-[10px] text-muted-foreground bg-background/50 border border-border p-1.5"
+    >
+      <span class="text-primary">pipeline:</span> {{ chat.taskState.artifacts.pipeline_summary }}
     </div>
 
     <!-- Invariants -->
@@ -124,7 +175,7 @@ function stepClass(status: string) {
     </div>
 
     <!-- Steps list -->
-    <div v-if="chat.taskState && chat.taskState.steps.length > 0" class="space-y-0.5">
+    <div v-if="chat.taskState?.steps?.length" class="space-y-0.5">
       <div
         v-for="step in chat.taskState.steps"
         :key="step.index"

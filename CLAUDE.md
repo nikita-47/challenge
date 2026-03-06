@@ -29,6 +29,7 @@
 - **Оптимизация токенов агента**: `compactHistory()` сжимает tool_result блоки старше 2 turns в однострочные summary, `formatStepProgress()` инжектит прогресс в goal message. Prompt caching через `cache_control: ephemeral` на system prompt и последнем tool. Efficiency Rules в промптах фаз. Результат: -78% input tokens, -84% стоимость.
 - **Инварианты**: пользовательские ограничения (invariants) передаются при создании задачи и инжектируются во все phase prompts через `formatInvariantsBlock()`. Агент обязан проверять инварианты перед каждым действием.
 - **Shared sandbox**: все фазы задачи работают в одной песочнице (`TaskState.SandboxDir`), создаётся через `EnsureSandbox()`, удаляется через `CleanupSandbox()` при завершении задачи.
+- **Динамические фазы**: вместо хардкоженного pipeline (planning→executing→validating→done) задача начинается с `PhaseProposing` — агент анализирует goal и предлагает кастомный pipeline через `submit_phases`. Пользователь может одобрить (approve) или отправить feedback для корректировки. `PhaseSpec` (Name/Type/Description/Status) маппится на существующих агентов по Type: `planning`→`newPlanningAgent`, `executing`→`newExecutingAgent`, `validating`→`newValidatingAgent`. Constraints: planning before executing, must end with validating, 2-5 phases. `validatePhases()` проверяет перед принятием.
 
 ## Рабочий процесс
 

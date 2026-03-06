@@ -2,8 +2,15 @@ export type ContextStrategy = 'summary' | 'window' | 'facts' | 'branch'
 
 // ─── Task State Machine ─────────────────────────────────────────────────────
 
-export type TaskPhase = 'planning' | 'executing' | 'validating' | 'done'
+export type TaskPhase = 'proposing' | 'planning' | 'executing' | 'validating' | 'done'
 export type TaskStepStatus = 'pending' | 'in_progress' | 'completed' | 'failed'
+
+export interface PhaseSpec {
+  name: string
+  type: 'planning' | 'executing' | 'validating'
+  description: string
+  status: 'pending' | 'active' | 'completed' | 'failed'
+}
 
 export interface TaskStep {
   index: number
@@ -29,6 +36,8 @@ export interface TaskState {
   feedback?: string
   validation_count: number
   error?: string
+  phases?: PhaseSpec[]
+  current_phase_index?: number
 }
 
 export interface ChatSettings {

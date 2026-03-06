@@ -211,10 +211,71 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 	// Ensure a single sandbox directory is shared across all phases of this task.
 	sandbox := ts.EnsureSandbox()
 
+	// Helper: advance to next dynamic phase after current one completes.
+	advancePhase := func() {
+		if len(ts.Phases) > 0 {
+			ts.Phases[ts.CurrentPhaseIndex].Status = "completed"
+			ts.CurrentPhaseIndex++
+			if ts.CurrentPhaseIndex < len(ts.Phases) {
+				ts.Phases[ts.CurrentPhaseIndex].Status = "active"
+				ts.Phase = ts.Phases[ts.CurrentPhaseIndex].Type
+			} else {
+				ts.Phase = PhaseDone
+			}
+		}
+	}
+
+	// Current phase description (from dynamic pipeline if available).
+	phaseDesc := ""
+	if len(ts.Phases) > 0 && ts.CurrentPhaseIndex < len(ts.Phases) {
+		phaseDesc = ts.Phases[ts.CurrentPhaseIndex].Description
+	}
+
 	switch ts.Phase {
+	case PhaseProposing:
+		agent := newProposingAgent(apiKey, cfg, ts, sandbox)
+		_, err := agent.Run(ts.Goal, nil, emit)
+		if err != nil {
+			ts.Error = err.Error()
+			return err
+		}
+		if agent.PhaseResult != nil && agent.PhaseResult.Tool == "submit_phases" {
+			var proposal struct {
+				Phases []struct {
+					Name        string `json:"name"`
+					Type        string `json:"type"`
+					Description string `json:"description"`
+				} `json:"phases"`
+				Summary string `json:"summary"`
+			}
+			json.Unmarshal(agent.PhaseResult.Input, &proposal)
+			phases := make([]PhaseSpec, len(proposal.Phases))
+			for i, p := range proposal.Phases {
+				phases[i] = PhaseSpec{
+					Name:        p.Name,
+					Type:        p.Type,
+					Description: p.Description,
+					Status:      StepPending,
+				}
+			}
+			if err := validatePhases(phases); err != nil {
+				ts.Error = fmt.Sprintf("Invalid pipeline: %v", err)
+			} else {
+				ts.Phases = phases
+				ts.Artifacts["pipeline_summary"] = proposal.Summary
+				ts.Paused = true
+			}
+		} else {
+			ts.Error = "Proposing agent did not submit phases"
+		}
+
 	case PhasePlanning:
 		agent := newPlanningAgent(apiKey, cfg, ts, sandbox)
-		_, err := agent.Run(ts.Goal, nil, emit)
+		goal := ts.Goal
+		if phaseDesc != "" {
+			goal = fmt.Sprintf("%s\n\nPhase focus: %s", ts.Goal, phaseDesc)
+		}
+		_, err := agent.Run(goal, nil, emit)
 		if err != nil {
 			ts.Error = err.Error()
 			return err
@@ -232,7 +293,7 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 				ts.Steps[i] = TaskStep{Index: i, Description: s.Description, Status: StepPending}
 			}
 			ts.Artifacts["plan_summary"] = plan.Summary
-			ts.Phase = PhaseExecuting
+			advancePhase()
 			ts.Paused = true
 			ts.Feedback = ""
 		} else {
@@ -241,15 +302,16 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 
 	case PhaseExecuting:
 		agent := newExecutingAgent(apiKey, cfg, ts, enabledTools, sandbox)
-		_, err := agent.Run("Execute the plan", nil, emit)
-		// Even on error (e.g. max turns), save what was done.
+		goal := "Execute the plan"
+		if phaseDesc != "" {
+			goal = fmt.Sprintf("Execute the plan\n\nPhase focus: %s", phaseDesc)
+		}
+		_, err := agent.Run(goal, nil, emit)
 		if err != nil {
 			ts.Error = err.Error()
 		}
-		// Copy step results from agent.
 		if len(agent.StepResults) > 0 {
 			ts.StepResults = append(ts.StepResults, agent.StepResults...)
-			// Update step statuses based on results.
 			for _, r := range agent.StepResults {
 				for i, s := range ts.Steps {
 					if s.Index == r.Index {
@@ -259,7 +321,7 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 				}
 			}
 		}
-		ts.Phase = PhaseValidating
+		advancePhase()
 		ts.Paused = true
 
 	case PhaseValidating:
@@ -279,16 +341,39 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 			ts.ValidationCount++
 			ts.Artifacts["validation"] = val.Feedback
 			if val.Passed {
-				ts.Phase = PhaseDone
-				ts.Paused = false
-				// Task is done — release the shared sandbox.
-				ts.CleanupSandbox()
+				advancePhase()
+				if ts.Phase == PhaseDone {
+					ts.Paused = false
+					ts.CleanupSandbox()
+				} else {
+					ts.Paused = true
+				}
 			} else {
 				ts.Feedback = val.Feedback
+				// On validation failure, find a previous phase to go back to.
+				if len(ts.Phases) > 0 {
+					ts.Phases[ts.CurrentPhaseIndex].Status = "failed"
+				}
 				if val.NextPhase == PhasePlanning {
 					ts.Phase = PhasePlanning
+					// Rewind to last planning phase in the pipeline.
+					for i := ts.CurrentPhaseIndex; i >= 0; i-- {
+						if ts.Phases[i].Type == PhasePlanning {
+							ts.CurrentPhaseIndex = i
+							ts.Phases[i].Status = "active"
+							break
+						}
+					}
 				} else {
 					ts.Phase = PhaseExecuting
+					// Rewind to last executing phase.
+					for i := ts.CurrentPhaseIndex; i >= 0; i-- {
+						if ts.Phases[i].Type == PhaseExecuting {
+							ts.CurrentPhaseIndex = i
+							ts.Phases[i].Status = "active"
+							break
+						}
+					}
 				}
 				ts.Paused = true
 			}
@@ -298,7 +383,6 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 		}
 
 	case PhaseDone:
-		// Nothing to do.
 		return nil
 	}
 
@@ -316,7 +400,48 @@ func runTaskPhaseLocal(localURL, localModel string, cfg config, cw *contextWindo
 		model = cfg.model
 	}
 
+	// Helper: advance to next dynamic phase (local path).
+	advancePhaseLocal := func() {
+		if len(ts.Phases) > 0 {
+			ts.Phases[ts.CurrentPhaseIndex].Status = "completed"
+			ts.CurrentPhaseIndex++
+			if ts.CurrentPhaseIndex < len(ts.Phases) {
+				ts.Phases[ts.CurrentPhaseIndex].Status = "active"
+				ts.Phase = ts.Phases[ts.CurrentPhaseIndex].Type
+			} else {
+				ts.Phase = PhaseDone
+			}
+		}
+	}
+
 	switch ts.Phase {
+	case PhaseProposing:
+		system := buildProposingPromptLocal(ts)
+		localCfg := cfg
+		localCfg.system = system
+		msgs := []message{{Role: "user", Content: ts.Goal}}
+
+		text, _, err := streamChatOpenAI(localURL, model, localCfg, msgs, func(token string) {
+			emit(AgentEvent{Type: "text_delta", Text: token})
+		})
+		if err != nil {
+			ts.Error = err.Error()
+			return err
+		}
+
+		phases, summary := parseProposedPhasesText(text)
+		if err := validatePhases(phases); err != nil {
+			// Use default pipeline on validation failure for local LLM.
+			phases = []PhaseSpec{
+				{Name: "Plan", Type: PhasePlanning, Description: "Analyze and plan", Status: StepPending},
+				{Name: "Execute", Type: PhaseExecuting, Description: "Implement the plan", Status: StepPending},
+				{Name: "Validate", Type: PhaseValidating, Description: "Verify results", Status: StepPending},
+			}
+		}
+		ts.Phases = phases
+		ts.Artifacts["pipeline_summary"] = summary
+		ts.Paused = true
+
 	case PhasePlanning:
 		system := buildPlanningPromptLocal(ts)
 		localCfg := cfg
@@ -334,7 +459,7 @@ func runTaskPhaseLocal(localURL, localModel string, cfg config, cw *contextWindo
 		steps, summary := parsePlanText(text)
 		ts.Steps = steps
 		ts.Artifacts["plan_summary"] = summary
-		ts.Phase = PhaseExecuting
+		advancePhaseLocal()
 		ts.Paused = true
 		ts.Feedback = ""
 
@@ -365,7 +490,7 @@ func runTaskPhaseLocal(localURL, localModel string, cfg config, cw *contextWindo
 			emit(AgentEvent{Type: "step_result", Text: string(srJSON)})
 		}
 		ts.Artifacts["exec_log"] = text
-		ts.Phase = PhaseValidating
+		advancePhaseLocal()
 		ts.Paused = true
 
 	case PhaseValidating:
@@ -386,14 +511,35 @@ func runTaskPhaseLocal(localURL, localModel string, cfg config, cw *contextWindo
 		ts.ValidationCount++
 		ts.Artifacts["validation"] = feedback
 		if passed {
-			ts.Phase = PhaseDone
-			ts.Paused = false
+			advancePhaseLocal()
+			if ts.Phase == PhaseDone {
+				ts.Paused = false
+			} else {
+				ts.Paused = true
+			}
 		} else {
 			ts.Feedback = feedback
+			if len(ts.Phases) > 0 {
+				ts.Phases[ts.CurrentPhaseIndex].Status = "failed"
+			}
 			if nextPhase == PhasePlanning {
 				ts.Phase = PhasePlanning
+				for i := ts.CurrentPhaseIndex; i >= 0; i-- {
+					if ts.Phases[i].Type == PhasePlanning {
+						ts.CurrentPhaseIndex = i
+						ts.Phases[i].Status = "active"
+						break
+					}
+				}
 			} else {
 				ts.Phase = PhaseExecuting
+				for i := ts.CurrentPhaseIndex; i >= 0; i-- {
+					if ts.Phases[i].Type == PhaseExecuting {
+						ts.CurrentPhaseIndex = i
+						ts.Phases[i].Status = "active"
+						break
+					}
+				}
 			}
 			ts.Paused = true
 		}
@@ -527,7 +673,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 		if cw.TaskState == nil {
 			cw.TaskState = &TaskState{
 				Goal:       req.Message,
-				Phase:      PhasePlanning,
+				Phase:      PhaseProposing,
 				Artifacts:  make(map[string]string),
 				Invariants: req.Invariants,
 			}
@@ -536,7 +682,21 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 		// If paused and user sent a message, treat as continue with optional feedback.
 		if cw.TaskState.Paused {
 			cw.TaskState.Paused = false
-			if req.Message != "" && req.Message != cw.TaskState.Goal {
+
+			if cw.TaskState.Phase == PhaseProposing && len(cw.TaskState.Phases) > 0 {
+				// Phases were proposed. Empty message = approve, non-empty = feedback.
+				if req.Message != "" && req.Message != cw.TaskState.Goal {
+					// Re-run proposing with feedback.
+					cw.TaskState.Feedback = req.Message
+					cw.TaskState.Phases = nil
+				} else {
+					// Approve: advance to first phase in pipeline.
+					cw.TaskState.CurrentPhaseIndex = 0
+					cw.TaskState.Phases[0].Status = "active"
+					cw.TaskState.Phase = cw.TaskState.Phases[0].Type
+					cw.TaskState.Feedback = ""
+				}
+			} else if req.Message != "" && req.Message != cw.TaskState.Goal {
 				cw.TaskState.Feedback = req.Message
 			}
 		}

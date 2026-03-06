@@ -259,7 +259,7 @@ export const useChatStore = defineStore('chat', () => {
     activeEnabledTools.value = enabledTools ?? []
     taskState.value = {
       goal,
-      phase: 'planning',
+      phase: 'proposing',
       paused: false,
       invariants: invariants?.length ? invariants : undefined,
       steps: [],

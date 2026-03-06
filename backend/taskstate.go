@@ -10,11 +10,20 @@ import (
 // ─── Task phases and step statuses ──────────────────────────────────────────
 
 const (
+	PhaseProposing  = "proposing"
 	PhasePlanning   = "planning"
 	PhaseExecuting  = "executing"
 	PhaseValidating = "validating"
 	PhaseDone       = "done"
 )
+
+// PhaseSpec describes a single phase in a dynamic task pipeline.
+type PhaseSpec struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`        // planning|executing|validating
+	Description string `json:"description"`
+	Status      string `json:"status"`      // pending|active|completed|failed
+}
 
 const (
 	StepPending   = "pending"
@@ -37,17 +46,19 @@ type StepResult struct {
 }
 
 type TaskState struct {
-	Goal            string            `json:"goal"`
-	Phase           string            `json:"phase"`              // planning|executing|validating|done
-	Paused          bool              `json:"paused"`             // true = ждём Continue от пользователя
-	Steps           []TaskStep        `json:"steps"`
-	StepResults     []StepResult      `json:"step_results"`
-	Artifacts       map[string]string `json:"artifacts"`          // "plan_summary", "exec_log", "validation"
-	Feedback        string            `json:"feedback,omitempty"` // от неудачной валидации
-	ValidationCount int               `json:"validation_count"`
-	Error           string            `json:"error,omitempty"`
-	Invariants      []string          `json:"invariants,omitempty"`
-	SandboxDir      string            `json:"sandbox_dir,omitempty"` // shared sandbox across phases
+	Goal              string            `json:"goal"`
+	Phase             string            `json:"phase"`              // proposing|planning|executing|validating|done
+	Paused            bool              `json:"paused"`             // true = ждём Continue от пользователя
+	Steps             []TaskStep        `json:"steps"`
+	StepResults       []StepResult      `json:"step_results"`
+	Artifacts         map[string]string `json:"artifacts"`          // "plan_summary", "exec_log", "validation"
+	Feedback          string            `json:"feedback,omitempty"` // от неудачной валидации
+	ValidationCount   int               `json:"validation_count"`
+	Error             string            `json:"error,omitempty"`
+	Invariants        []string          `json:"invariants,omitempty"`
+	SandboxDir        string            `json:"sandbox_dir,omitempty"` // shared sandbox across phases
+	Phases            []PhaseSpec       `json:"phases,omitempty"`
+	CurrentPhaseIndex int               `json:"current_phase_index"`
 }
 
 // EnsureSandbox returns the existing shared sandbox directory, or creates one if it doesn't exist.
@@ -83,6 +94,118 @@ func formatInvariantsBlock(invariants []string) string {
 		b.WriteString(fmt.Sprintf("%d. %s\n", i+1, inv))
 	}
 	return b.String()
+}
+
+// ─── Phase validation ────────────────────────────────────────────────────────
+
+// validatePhases enforces pipeline constraints:
+// - at least one planning phase before any executing phase
+// - pipeline must end with a validating phase
+// - 2-5 phases total
+// - valid types
+func validatePhases(phases []PhaseSpec) error {
+	if len(phases) < 2 || len(phases) > 5 {
+		return fmt.Errorf("pipeline must have 2-5 phases, got %d", len(phases))
+	}
+	validTypes := map[string]bool{PhasePlanning: true, PhaseExecuting: true, PhaseValidating: true}
+	seenPlanning := false
+	for i, p := range phases {
+		if !validTypes[p.Type] {
+			return fmt.Errorf("phase %d (%s): invalid type %q", i, p.Name, p.Type)
+		}
+		if p.Type == PhaseExecuting && !seenPlanning {
+			return fmt.Errorf("phase %d (%s): executing phase requires a planning phase before it", i, p.Name)
+		}
+		if p.Type == PhasePlanning {
+			seenPlanning = true
+		}
+	}
+	last := phases[len(phases)-1]
+	if last.Type != PhaseValidating {
+		return fmt.Errorf("pipeline must end with a validating phase, got %q", last.Type)
+	}
+	return nil
+}
+
+// ─── Proposing phase prompts ─────────────────────────────────────────────────
+
+func buildProposingPrompt(ts *TaskState) string {
+	var b strings.Builder
+	b.WriteString("You are a task analysis agent. Analyze the goal and propose a pipeline of phases.\n\n")
+	b.WriteString("Each phase has:\n")
+	b.WriteString("- name: short display name (e.g., \"Research\", \"Plan\", \"Implement\", \"Validate\")\n")
+	b.WriteString("- type: one of \"planning\", \"executing\", \"validating\"\n")
+	b.WriteString("  - planning: analysis, research, design, planning (no side effects)\n")
+	b.WriteString("  - executing: writing code, running commands, making changes\n")
+	b.WriteString("  - validating: testing, verifying, checking results\n")
+	b.WriteString("- description: what this phase should accomplish\n\n")
+	b.WriteString("Rules:\n")
+	b.WriteString("- At least one \"planning\" phase must come before any \"executing\" phase\n")
+	b.WriteString("- Pipeline must end with a \"validating\" phase\n")
+	b.WriteString("- 2-5 phases total\n")
+	b.WriteString("- Each phase name must be unique\n\n")
+	b.WriteString("Use submit_phases tool to submit your proposed pipeline.\n\n")
+	b.WriteString(fmt.Sprintf("Goal: %s\n", ts.Goal))
+	if ts.Feedback != "" {
+		b.WriteString(fmt.Sprintf("\nFeedback from user (incorporate this into your revised pipeline):\n%s\n", ts.Feedback))
+	}
+	b.WriteString(formatInvariantsBlock(ts.Invariants))
+	return b.String()
+}
+
+func buildProposingPromptLocal(ts *TaskState) string {
+	var b strings.Builder
+	b.WriteString("You are a task analysis agent. Analyze the goal and propose a pipeline of phases.\n\n")
+	b.WriteString("Output your pipeline in EXACTLY this format:\n\n")
+	b.WriteString("SUMMARY: <brief description of the approach>\n")
+	b.WriteString("PHASES:\n")
+	b.WriteString("1. [planning] Research: <description>\n")
+	b.WriteString("2. [executing] Implement: <description>\n")
+	b.WriteString("3. [validating] Validate: <description>\n\n")
+	b.WriteString("Phase types: planning, executing, validating\n")
+	b.WriteString("Rules: planning before executing, end with validating, 2-5 phases.\n\n")
+	b.WriteString(fmt.Sprintf("Goal: %s\n", ts.Goal))
+	if ts.Feedback != "" {
+		b.WriteString(fmt.Sprintf("\nFeedback: %s\n", ts.Feedback))
+	}
+	b.WriteString(formatInvariantsBlock(ts.Invariants))
+	return b.String()
+}
+
+// parseProposedPhasesText parses local LLM text output into PhaseSpec slice.
+var phaseLineRe = regexp.MustCompile(`^\s*\d+\.\s*\[(planning|executing|validating)\]\s*([^:]+):\s*(.+)`)
+
+func parseProposedPhasesText(text string) ([]PhaseSpec, string) {
+	lines := strings.Split(text, "\n")
+	var summary string
+	var phases []PhaseSpec
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "SUMMARY:") {
+			summary = strings.TrimSpace(strings.TrimPrefix(trimmed, "SUMMARY:"))
+			continue
+		}
+		if m := phaseLineRe.FindStringSubmatch(line); m != nil {
+			phases = append(phases, PhaseSpec{
+				Name:        strings.TrimSpace(m[2]),
+				Type:        m[1],
+				Description: strings.TrimSpace(m[3]),
+				Status:      StepPending,
+			})
+		}
+	}
+
+	// Fallback: if no phases parsed, create a default pipeline.
+	if len(phases) == 0 {
+		phases = []PhaseSpec{
+			{Name: "Plan", Type: PhasePlanning, Description: "Analyze and plan the approach", Status: StepPending},
+			{Name: "Execute", Type: PhaseExecuting, Description: "Implement the plan", Status: StepPending},
+			{Name: "Validate", Type: PhaseValidating, Description: "Verify the results", Status: StepPending},
+		}
+	}
+
+	return phases, summary
 }
 
 // ─── Phase-specific system prompts ──────────────────────────────────────────
@@ -368,6 +491,25 @@ func (ts *TaskState) FormatStatus() string {
 		b.WriteString(" (paused — send a message to continue)")
 	}
 	b.WriteString("\n")
+	if len(ts.Phases) > 0 {
+		b.WriteString("Pipeline: ")
+		for i, p := range ts.Phases {
+			icon := "[ ]"
+			switch p.Status {
+			case "completed":
+				icon = "[x]"
+			case "active":
+				icon = "[>]"
+			case "failed":
+				icon = "[!]"
+			}
+			b.WriteString(fmt.Sprintf("%s %s", icon, p.Name))
+			if i < len(ts.Phases)-1 {
+				b.WriteString(" → ")
+			}
+		}
+		b.WriteString("\n")
+	}
 	if len(ts.Steps) > 0 {
 		b.WriteString(fmt.Sprintf("Steps: %d/%d completed\n", ts.completedCount(), len(ts.Steps)))
 		for _, s := range ts.Steps {

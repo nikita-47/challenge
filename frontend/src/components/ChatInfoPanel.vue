@@ -148,6 +148,7 @@ watch(() => chat.messages.length, () => {
             <span class="text-muted-foreground">phase</span>
             <span
               :class="{
+                'text-purple-400': chat.taskState.phase === 'proposing',
                 'text-yellow-400': chat.taskState.phase === 'planning',
                 'text-blue-400': chat.taskState.phase === 'executing',
                 'text-orange-400': chat.taskState.phase === 'validating',
@@ -156,6 +157,26 @@ watch(() => chat.messages.length, () => {
             >
               {{ chat.taskState.phase }}
             </span>
+          </div>
+          <div v-if="chat.taskState.phases?.length" class="space-y-1">
+            <span class="text-muted-foreground">pipeline</span>
+            <div
+              v-for="p in chat.taskState.phases"
+              :key="p.name"
+              class="flex justify-between text-xs"
+            >
+              <span
+                :class="{
+                  'text-primary font-medium': p.status === 'active',
+                  'text-green-400': p.status === 'completed',
+                  'text-red-400': p.status === 'failed',
+                  'text-muted-foreground': p.status === 'pending',
+                }"
+              >
+                {{ p.name }}
+              </span>
+              <span class="text-muted-foreground">{{ p.type }}</span>
+            </div>
           </div>
           <div class="flex justify-between">
             <span class="text-muted-foreground">paused</span>
@@ -167,13 +188,13 @@ watch(() => chat.messages.length, () => {
             <span class="text-muted-foreground">validation_count</span>
             <span class="text-primary">{{ chat.taskState.validation_count }}</span>
           </div>
-          <div v-if="chat.taskState.steps.length > 0" class="flex justify-between">
+          <div v-if="chat.taskState.steps?.length" class="flex justify-between">
             <span class="text-muted-foreground">progress</span>
             <span class="text-primary">
               {{ chat.taskState.steps.filter(s => s.status === 'completed').length }}/{{ chat.taskState.steps.length }}
             </span>
           </div>
-          <div v-if="chat.taskState.step_results.length > 0" class="flex justify-between">
+          <div v-if="chat.taskState.step_results?.length" class="flex justify-between">
             <span class="text-muted-foreground">step_results</span>
             <span class="text-primary">{{ chat.taskState.step_results.length }}</span>
           </div>

@@ -231,7 +231,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			}
 			cw.TaskState = &TaskState{
 				Goal:      goal,
-				Phase:     PhasePlanning,
+				Phase:     PhaseProposing,
 				Artifacts: make(map[string]string),
 			}
 			fmt.Printf("\033[1m[Task] Starting: %s\033[0m\n", goal)

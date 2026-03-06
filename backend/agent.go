@@ -129,6 +129,15 @@ func filterTools(tools []toolDef, enabled []string) []toolDef {
 
 // ─── Phase-specific agent constructors ───────────────────────────────────────
 
+func newProposingAgent(apiKey string, cfg config, ts *TaskState, sandboxDir string) *Agent {
+	a := newAgent(apiKey, cfg)
+	a.system = buildProposingPrompt(ts)
+	a.tools = []toolDef{submitPhasesTool()}
+	a.maxTurns = 3
+	a.workDir = sandboxDir
+	return a
+}
+
 func newPlanningAgent(apiKey string, cfg config, ts *TaskState, sandboxDir string) *Agent {
 	a := newAgent(apiKey, cfg)
 	a.system = buildPlanningPrompt(ts)
@@ -191,6 +200,46 @@ func submitPlanTool() toolDef {
 				},
 			},
 			"required": []string{"steps", "summary"},
+		},
+	}
+}
+
+func submitPhasesTool() toolDef {
+	return toolDef{
+		Name:        "submit_phases",
+		Description: "Submit the proposed pipeline of phases for the task. Call this after analyzing the goal.",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"phases": map[string]any{
+					"type":        "array",
+					"description": "Ordered list of phases for the pipeline",
+					"items": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"name": map[string]any{
+								"type":        "string",
+								"description": "Short display name (e.g. Research, Plan, Implement, Validate)",
+							},
+							"type": map[string]any{
+								"type":        "string",
+								"description": "Phase type: planning, executing, or validating",
+								"enum":        []string{"planning", "executing", "validating"},
+							},
+							"description": map[string]any{
+								"type":        "string",
+								"description": "What this phase should accomplish",
+							},
+						},
+						"required": []string{"name", "type", "description"},
+					},
+				},
+				"summary": map[string]any{
+					"type":        "string",
+					"description": "Brief description of the overall approach",
+				},
+			},
+			"required": []string{"phases", "summary"},
 		},
 	}
 }
@@ -549,8 +598,8 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 
 			emit(AgentEvent{Type: "tool_call", Tool: block.Name, Input: block.Input})
 
-			// Handle phase-ending tools: submit_plan and submit_validation.
-			if block.Name == "submit_plan" || block.Name == "submit_validation" {
+			// Handle phase-ending tools: submit_plan, submit_validation, submit_phases.
+			if block.Name == "submit_plan" || block.Name == "submit_validation" || block.Name == "submit_phases" {
 				a.PhaseResult = &PhaseResult{Tool: block.Name, Input: block.Input}
 				emit(AgentEvent{Type: "tool_result", Tool: block.Name, Output: "Accepted.", IsError: false})
 				toolResults = append(toolResults, contentBlock{

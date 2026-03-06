@@ -346,6 +346,24 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 16 — Dynamic Task Phases ✅
+
+**Assignment:** Replace hardcoded 4-phase pipeline (planning→executing→validating→done) with dynamic phase proposal. Agent analyzes the goal, proposes a custom pipeline of phases, user approves or sends feedback before execution begins.
+
+**What was built on top of previous day:**
+- `backend/taskstate.go` — `PhaseSpec` struct (Name/Type/Description/Status), `PhaseProposing` constant, `Phases []PhaseSpec` + `CurrentPhaseIndex` on `TaskState`, `validatePhases()` enforces constraints (planning before executing, must end with validating, 2-5 phases), `buildProposingPrompt()`/`buildProposingPromptLocal()` system prompts, `parseProposedPhasesText()` parser with fallback, updated `FormatStatus()` for pipeline display
+- `backend/agent.go` — `newProposingAgent()` (tools: submit_phases, maxTurns: 3), `submitPhasesTool()` schema, `submit_phases` added to phase-ending tool handling in agentic loop
+- `backend/server.go` — `PhaseProposing` case in `runTaskPhase()`/`runTaskPhaseLocal()`, `advancePhase()` helper for dynamic phase transitions, phase description context injection ("Phase focus: ..."), approval flow (empty message = approve, non-empty = feedback → re-run proposing), validation failure rewinds to appropriate phase in pipeline
+- `backend/chat.go` — `/task <goal>` starts with `PhaseProposing`
+- `frontend/src/lib/types.ts` — `PhaseSpec` interface, `'proposing'` added to `TaskPhase`, `phases?`/`current_phase_index?` on `TaskState`
+- `frontend/src/stores/chat.ts` — `startTask()` initial phase = `'proposing'`
+- `frontend/src/components/TaskStatePanel.vue` — dynamic phases from `taskState.phases`: "analyzing..." during proposing, proposed pipeline detail with approve/modify UI, phase progress with status colors, null-safe `steps`/`step_results` access
+- `frontend/src/components/ChatInfoPanel.vue` — `'proposing'` color (purple), pipeline section with dynamic phases and status, null-safe `steps`/`step_results` access
+
+**Key code:** `PhaseSpec`, `validatePhases()`, `newProposingAgent()`, `submitPhasesTool()`, `buildProposingPrompt()`, `parseProposedPhasesText()`, `advancePhase()`, approval flow in `handleChat()`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_
