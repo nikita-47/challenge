@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useUIStore } from '@/stores/ui'
 import { useSessionsStore } from '@/stores/sessions'
 import { useMemoryStore } from '@/stores/memory'
@@ -51,18 +51,29 @@ const operator = ref(NONE)
 const profile = ref(NONE)
 const project = ref(NONE)
 const model = ref('')
-const temperature = ref([0.7])
+const temperature = ref([0.2])
 const maxTokens = ref(1024)
 const system = ref('')
 const strategy = ref<ContextStrategy>('summary')
 const windowSize = ref(10)
+
+const temperatureHint = computed(() => {
+  const t = temperature.value[0] ?? 0.2
+  if (t <= 0.3) {
+    return { label: 'Low', examples: 'Factual responses, coding, data extraction' }
+  }
+  if (t <= 0.7) {
+    return { label: 'Medium', examples: 'Summarization, education, problem-solving' }
+  }
+  return { label: 'High', examples: 'Brainstorming, creative writing, marketing' }
+})
 
 watch(() => ui.newChatDialogOpen, (open) => {
   if (open) {
     chatName.value = ''
     model.value = ui.config?.model ?? ''
     const t = ui.config?.temperature
-    temperature.value = [t != null && t >= 0 ? t : 0.7]
+    temperature.value = [t != null && t >= 0 ? t : 0.2]
     maxTokens.value = ui.config?.maxTokens ?? 1024
     system.value = ui.config?.system ?? ''
     strategy.value = 'summary'
@@ -77,7 +88,7 @@ watch(() => ui.newChatDialogOpen, (open) => {
 function confirm() {
   const s: ChatSettings = {
     model: model.value,
-    temperature: temperature.value[0] ?? 0.7,
+    temperature: temperature.value[0] ?? 0.2,
     maxTokens: maxTokens.value,
     system: system.value,
     strategy: strategy.value,
@@ -194,13 +205,16 @@ function confirm() {
         </div>
 
         <div class="space-y-2">
-          <Label>Temperature: {{ (temperature[0] ?? 0.7).toFixed(2) }}</Label>
+          <Label>Temperature: {{ (temperature[0] ?? 0.2).toFixed(2) }}</Label>
           <Slider
             v-model="temperature"
             :min="0"
             :max="1"
             :step="0.05"
           />
+          <p class="text-xs text-muted-foreground">
+            <span class="font-medium">{{ temperatureHint.label }}:</span> {{ temperatureHint.examples }}
+          </p>
         </div>
 
         <div class="space-y-2">

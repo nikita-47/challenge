@@ -48,7 +48,7 @@ export const useSessionsStore = defineStore('sessions', () => {
       if (data.settings) {
         chat.setSettings({
           model: data.settings.model ?? '',
-          temperature: data.settings.temperature ?? 0.7,
+          temperature: data.settings.temperature ?? 0.2,
           maxTokens: data.settings.max_tokens ?? data.settings.maxTokens ?? 1024,
           system: data.settings.system ?? '',
           strategy: data.settings.strategy ?? undefined,

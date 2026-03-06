@@ -387,7 +387,7 @@ func (a *Agent) buildPayload() map[string]any {
 			},
 		}
 	}
-	if a.temperature > 0 {
+	if a.temperature >= 0 {
 		payload["temperature"] = a.temperature
 	}
 	return payload
