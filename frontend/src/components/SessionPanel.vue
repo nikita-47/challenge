@@ -4,11 +4,13 @@ import { useSessionsStore } from '@/stores/sessions'
 import { useMemoryStore } from '@/stores/memory'
 import { useChatStore } from '@/stores/chat'
 import { useUIStore } from '@/stores/ui'
+import { useMCPStore } from '@/stores/mcp'
 import { fetchProfile, fetchProject, fetchOperator, updateProfile, updateProject, updateOperator } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import MemoryEditorDialog from '@/components/MemoryEditorDialog.vue'
 import GlobalSettings from '@/components/GlobalSettings.vue'
+import MCPPanel from '@/components/MCPPanel.vue'
 
 defineEmits<{ close: [] }>()
 
@@ -16,8 +18,9 @@ const sessions = useSessionsStore()
 const memory = useMemoryStore()
 const chat = useChatStore()
 const ui = useUIStore()
+const mcpStore = useMCPStore()
 
-const tab = ref<'sessions' | 'memory'>('sessions')
+const tab = ref<'sessions' | 'memory' | 'mcp'>('sessions')
 
 const editingName = ref<string | null>(null)
 const editValue = ref('')
@@ -119,6 +122,10 @@ watch(tab, (v) => {
   if (v === 'memory') {
     memory.loadAll()
   }
+  if (v === 'mcp') {
+    mcpStore.loadServers()
+    mcpStore.loadTools()
+  }
 })
 </script>
 
@@ -139,6 +146,13 @@ watch(tab, (v) => {
           @click="tab = 'memory'"
         >
           memory
+        </button>
+        <button
+          class="px-2 py-0.5 text-xs transition-colors border"
+          :class="tab === 'mcp' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground hover:text-foreground border-transparent'"
+          @click="tab = 'mcp'"
+        >
+          mcp
         </button>
       </div>
       <Button
@@ -211,7 +225,7 @@ watch(tab, (v) => {
     </template>
 
     <!-- Memory tab -->
-    <ScrollArea v-else class="flex-1">
+    <ScrollArea v-else-if="tab === 'memory'" class="flex-1">
       <div class="p-3 space-y-3 text-sm">
         <!-- Operators -->
         <div class="space-y-2">
@@ -302,6 +316,9 @@ watch(tab, (v) => {
         </div>
       </div>
     </ScrollArea>
+
+    <!-- MCP tab -->
+    <MCPPanel v-else-if="tab === 'mcp'" class="flex-1 min-h-0" />
 
     <GlobalSettings />
 

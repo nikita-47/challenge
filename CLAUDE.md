@@ -12,8 +12,10 @@
 - `.env` — хранит `ANTHROPIC_API_KEY` (не коммитится)
 - `.chat_history/` — сохранённые сессии чата (не коммитится)
 - `.memory/` — слои памяти: `profiles/` (долгосрочная) + `projects/` (рабочая) + `operators/` (неизменяемая идентичность пользователя), .md файлы (не коммитится)
-- `.claude/agents/` — конфигурации субагентов: `go.md` (backend, sonnet), `frontend.md` (Vue/TS, sonnet), `qa.md` (тестировщик, haiku)
+- `.claude/agents/` — конфигурации субагентов: `go-backend-specialist.md` (backend, sonnet), `vue-frontend-specialist.md` (Vue/TS, sonnet), `qa-tester.md` (тестировщик, haiku)
 - `.sandbox/` — песочницы для агентов (не коммитится)
+- `.mcp_servers.json` — конфиг MCP-серверов (не коммитится), формат Claude Desktop
+- `.mcp_servers.example.json` — пример конфига MCP
 
 ## Правила
 
@@ -29,6 +31,7 @@
 - **Оптимизация токенов агента**: `compactHistory()` сжимает tool_result блоки старше 2 turns в однострочные summary, `formatStepProgress()` инжектит прогресс в goal message. Prompt caching через `cache_control: ephemeral` на system prompt и последнем tool. Efficiency Rules в промптах фаз. Результат: -78% input tokens, -84% стоимость.
 - **Инварианты**: пользовательские ограничения (invariants) передаются при создании задачи и инжектируются во все phase prompts через `formatInvariantsBlock()`. Агент обязан проверять инварианты перед каждым действием.
 - **Shared sandbox**: все фазы задачи работают в одной песочнице (`TaskState.SandboxDir`), создаётся через `EnsureSandbox()`, удаляется через `CleanupSandbox()` при завершении задачи.
+- **MCP клиент**: `MCPManager` в `backend/mcp.go` управляет множеством MCP-серверов через `mcp-go` библиотеку (первая внешняя зависимость). Конфиг `.mcp_servers.json` (формат Claude Desktop). Stdio транспорт — MCP-сервер как subprocess. HTTP API: `/api/mcp/servers`, `/api/mcp/tools`, `/api/mcp/tools/call`, `/api/mcp/reload`. Frontend: таб "mcp" в сайдбаре с Select dropdown, connect/disconnect, список tools.
 - **Динамические фазы**: вместо хардкоженного pipeline (planning→executing→validating→done) задача начинается с `PhaseProposing` — агент анализирует goal и предлагает кастомный pipeline через `submit_phases`. Пользователь может одобрить (approve) или отправить feedback для корректировки. `PhaseSpec` (Name/Type/Description/Status) маппится на существующих агентов по Type: `planning`→`newPlanningAgent`, `executing`→`newExecutingAgent`, `validating`→`newValidatingAgent`. Constraints: planning before executing, must end with validating, 2-5 phases. `validatePhases()` проверяет перед принятием.
 
 ## Рабочий процесс
@@ -72,13 +75,13 @@ Validation -> Done
 
 Субагенты по типу задач:
 
-| Стадия     | Agent tool params                                    | Инструкции из                        |
-| ---------- | ---------------------------------------------------- | ------------------------------------ |
-| Research   | КОНСИЛИУМ (см. ниже)                                 | Роль-специфичный prompt              |
-| Plan       | subagent_type: Plan, model: opus                     | —                                    |
-| Executing  | subagent_type: general-purpose, model: sonnet        | .claude/agents/go.md или frontend.md |
-| Validation | subagent_type: general-purpose, model: haiku         | .claude/agents/qa.md                 |
-| Done       | Главный чат (без делегирования)                      | —                                    |
+| Стадия     | Agent tool params                             | Инструкции из             |
+| ---------- | --------------------------------------------- | ------------------------- |
+| Research   | КОНСИЛИУМ (см. ниже)                          | Роль-специфичный prompt   |
+| Plan       | subagent_type: Plan, model: opus              | —                         |
+| Executing  | subagent_type: general-purpose, model: sonnet | .claude/agents/go или vue |
+| Validation | subagent_type: general-purpose, model: haiku  | .claude/agents/qa         |
+| Done       | Главный чат (без делегирования)               | —                         |
 
 #### Механизм делегирования
 

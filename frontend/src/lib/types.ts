@@ -192,3 +192,18 @@ export type SSEEvent =
   | StepResultEvent
   | { type: 'memory_updated' }
   | { type: 'text'; Text: string }
+
+// ─── MCP Types ──────────────────────────────────────────────────────────────
+export interface MCPServerStatus {
+  name: string
+  connected: boolean
+  toolsCount: number
+  error?: string
+}
+
+export interface MCPToolInfo {
+  server: string
+  name: string
+  description: string
+  inputSchema: unknown
+}

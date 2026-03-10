@@ -5,7 +5,10 @@
       "Bash(wc:*)",
       "Bash(mkdir:*)",
       "Bash(npx playwright:*)",
-      "Bash(NODE_PATH=/Users/nbonachev/.npm/_npx/9833c18b2d85bc59/node_modules node:*)"
+      "Bash(NODE_PATH=/Users/nbonachev/.npm/_npx/9833c18b2d85bc59/node_modules node:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(go get:*)",
+      "Bash(curl -s http://localhost:8080/api/mcp/tools | python3 -m json.tool 2>&1)"
     ]
   }
 }

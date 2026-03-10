@@ -364,6 +364,27 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 17 — MCP Client Integration ✅
+
+**Assignment:** Install MCP SDK/client, write code that establishes an MCP connection and retrieves the list of available tools. First integration: Railway MCP server.
+
+**What was built on top of previous day:**
+- `backend/mcp.go` — `MCPManager` (sync.RWMutex, multi-server), `MCPConnection`, `MCPServerConfig`, `MCPServersFile` config types, `Connect()`/`Disconnect()`/`ConnectAll()`/`DisconnectAll()` lifecycle, `GetTools()`/`CallTool()` via `mcp-go` library, 5 HTTP handlers under `/api/mcp/`
+- `backend/server.go` — MCPManager init at startup, 5 route registrations (`/api/mcp/servers`, `/api/mcp/servers/`, `/api/mcp/tools`, `/api/mcp/tools/call`, `/api/mcp/reload`)
+- `go.mod` — first external dependency: `github.com/mark3labs/mcp-go v0.45.0` (MCP protocol, JSON-RPC 2.0, stdio/SSE/HTTP transports)
+- `.mcp_servers.example.json` — example config (Claude Desktop format)
+- `frontend/src/stores/mcp.ts` — Pinia store: servers, tools, loading, connect/disconnect/reload actions
+- `frontend/src/components/MCPPanel.vue` — MCP panel: Select dropdown for server selection, on/off toggle, status dot, scrollable tool list with names, descriptions, expandable JSON schemas
+- `frontend/src/components/SessionPanel.vue` — third tab "mcp" in left sidebar
+- `frontend/src/lib/api.ts` — `fetchMCPServers()`, `fetchMCPTools()`, `connectMCPServer()`, `disconnectMCPServer()`, `reloadMCPConfig()`
+- `frontend/src/lib/types.ts` — `MCPServerStatus`, `MCPToolInfo` interfaces
+
+**Railway MCP:** 14 tools discovered (check-railway-status, list-projects, deploy, list-services, get-logs, create-environment, etc.)
+
+**Key code:** `MCPManager`, `NewMCPManager()`, `Connect()`, `Disconnect()`, `GetTools()`, `CallTool()`, `handleMCPServers()`, `handleMCPTools()`, `handleMCPToolCall()`, `useMCPStore`, `MCPPanel.vue`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

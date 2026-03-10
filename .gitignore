@@ -8,3 +8,4 @@ challenge
 finance-app/
 skills-lock.json
 *.png
+.mcp_servers.json

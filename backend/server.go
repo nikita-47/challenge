@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -157,6 +158,31 @@ func startServer(apiKey string, cfg config) {
 			"costIn":      p.CostIn,
 			"costOut":     p.CostOut,
 		})
+	})
+
+	// ─── MCP Manager ────────────────────────────────────────────────────────
+	mcpMgr := NewMCPManager(".mcp_servers.json")
+	if err := mcpMgr.LoadConfig(); err != nil {
+		fmt.Fprintf(os.Stderr, "[mcp] config load: %v\n", err)
+	}
+	mcpMgr.ConnectAll(context.Background())
+	defer mcpMgr.DisconnectAll()
+
+	// ─── MCP endpoints ──────────────────────────────────────────────────────
+	mux.HandleFunc("/api/mcp/servers", func(w http.ResponseWriter, r *http.Request) {
+		handleMCPServers(w, r, mcpMgr)
+	})
+	mux.HandleFunc("/api/mcp/servers/", func(w http.ResponseWriter, r *http.Request) {
+		handleMCPServerAction(w, r, mcpMgr)
+	})
+	mux.HandleFunc("/api/mcp/tools", func(w http.ResponseWriter, r *http.Request) {
+		handleMCPTools(w, r, mcpMgr)
+	})
+	mux.HandleFunc("/api/mcp/tools/call", func(w http.ResponseWriter, r *http.Request) {
+		handleMCPToolCall(w, r, mcpMgr)
+	})
+	mux.HandleFunc("/api/mcp/reload", func(w http.ResponseWriter, r *http.Request) {
+		handleMCPReload(w, r, mcpMgr)
 	})
 
 	// Static files — serve frontend/dist/ if it exists.

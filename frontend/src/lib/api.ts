@@ -1,3 +1,5 @@
+import type { MCPServerStatus, MCPToolInfo } from '@/lib/types'
+
 export interface SessionInfo {
   name: string
   profile?: string
@@ -276,6 +278,51 @@ export async function updateSettings(settings: ProviderSettings): Promise<Provid
   })
   if (!resp.ok) {
     throw new Error(`Failed to update settings: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+// ─── MCP API ─────────────────────────────────────────────────────────────────
+
+export async function fetchMCPServers(): Promise<MCPServerStatus[]> {
+  const resp = await fetch('/api/mcp/servers')
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch MCP servers: ${resp.statusText}`)
+  }
+  const data = await resp.json()
+  return data ?? []
+}
+
+export async function fetchMCPTools(server?: string): Promise<MCPToolInfo[]> {
+  const url = server ? `/api/mcp/tools?server=${encodeURIComponent(server)}` : '/api/mcp/tools'
+  const resp = await fetch(url)
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch MCP tools: ${resp.statusText}`)
+  }
+  const data = await resp.json()
+  return data ?? []
+}
+
+export async function connectMCPServer(name: string) {
+  const resp = await fetch(`/api/mcp/servers/${encodeURIComponent(name)}/connect`, { method: 'POST' })
+  if (!resp.ok) {
+    throw new Error(`Failed to connect: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function disconnectMCPServer(name: string) {
+  const resp = await fetch(`/api/mcp/servers/${encodeURIComponent(name)}/disconnect`, { method: 'POST' })
+  if (!resp.ok) {
+    throw new Error(`Failed to disconnect: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function reloadMCPConfig() {
+  const resp = await fetch('/api/mcp/reload', { method: 'POST' })
+  if (!resp.ok) {
+    throw new Error(`Failed to reload: ${resp.statusText}`)
   }
   return resp.json()
 }
