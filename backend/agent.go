@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // ─── Agent event (for decoupled IO) ──────────────────────────────────────────
@@ -78,7 +81,8 @@ type Agent struct {
 	tools       []toolDef
 	history     []message
 	Stats       tokenStats
-	workDir     string      // sandbox directory for tool execution
+	workDir     string       // sandbox directory for tool execution
+	mcpMgr      *MCPManager  // optional MCP manager for routing MCP tool calls
 	PhaseResult *PhaseResult // filled when submit_plan or submit_validation is called
 	StepResults []StepResult // accumulated from report_step calls
 }
@@ -355,7 +359,7 @@ func (a *Agent) Cleanup() {
 
 // ─── Tool execution ──────────────────────────────────────────────────────────
 
-func executeTool(name string, rawInput json.RawMessage, workDir string) (string, bool) {
+func executeTool(name string, rawInput json.RawMessage, workDir string, mcpMgr *MCPManager) (string, bool) {
 	switch name {
 	case "run_shell":
 		var input struct {
@@ -403,6 +407,33 @@ func executeTool(name string, rawInput json.RawMessage, workDir string) (string,
 		return content, false
 
 	default:
+		// Attempt MCP routing for namespaced tool names ("server__toolname").
+		if mcpMgr != nil {
+			server, tool, ok := parseMCPToolName(name)
+			if ok {
+				var args map[string]any
+				if err := json.Unmarshal(rawInput, &args); err != nil {
+					return "invalid MCP tool input: " + err.Error(), true
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				mcpResult, err := mcpMgr.CallTool(ctx, server, tool, args)
+				if err != nil {
+					return "MCP tool error: " + err.Error(), true
+				}
+				// Collect all TextContent blocks into a single string.
+				var sb strings.Builder
+				for _, c := range mcpResult.Content {
+					if tc, ok := c.(mcp.TextContent); ok {
+						if sb.Len() > 0 {
+							sb.WriteString("\n")
+						}
+						sb.WriteString(tc.Text)
+					}
+				}
+				return sb.String(), mcpResult.IsError
+			}
+		}
 		return "unknown tool: " + name, true
 	}
 }
@@ -639,8 +670,8 @@ func (a *Agent) Run(goal string, chatHistory []message, emit func(AgentEvent)) (
 				continue
 			}
 
-			// Default tool execution (run_shell, read_file).
-			result, isError := executeTool(block.Name, block.Input, a.workDir)
+			// Default tool execution (run_shell, read_file, or MCP).
+			result, isError := executeTool(block.Name, block.Input, a.workDir, a.mcpMgr)
 			emit(AgentEvent{Type: "tool_result", Tool: block.Name, Output: result, IsError: isError})
 
 			toolResults = append(toolResults, contentBlock{

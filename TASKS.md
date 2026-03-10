@@ -385,6 +385,24 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 18 — Custom MCP Server (HackerNews) ✅
+
+**Assignment:** Implement a custom MCP server wrapping an external API. Register tools with input parameters, return results. Connect to the agent and invoke tools from the application.
+
+**What was built on top of previous day:**
+- `mcp-servers/hackernews/main.go` — standalone MCP server binary (stdio transport via `mcp-go/server`), wraps HackerNews Firebase API + Algolia Search. 4 tools: `hn_top_stories` (top N stories), `hn_get_item` (item by ID), `hn_get_user` (profile by username), `hn_search` (Algolia full-text search with tags filter). No API keys needed.
+- `backend/mcp.go` — `GetToolDefs()` converts MCP tools to agent `toolDef` format (JSON round-trip for schema), `parseMCPToolName()` splits `server__toolname` for routing
+- `backend/agent.go` — `mcpMgr *MCPManager` field on Agent, `executeTool()` extended with MCP routing: parses `server__toolname`, calls `MCPManager.CallTool()` with 30s timeout, extracts TextContent
+- `backend/server.go` — `McpTools []string` in `chatRequest`, `handleChat()` receives `*MCPManager`, creates agent with MCP tools when `mcpTools` is non-empty
+- `frontend/src/components/SendSettingsPopover.vue` — "MCP Servers" section with grouped UI: server-level checkbox (toggle all tools), per-tool checkboxes, `N/M` counter, violet highlight on settings button when MCP tools active
+- `frontend/src/stores/chat.ts` — `activeMcpTools` ref, sent as `mcpTools` in chat request
+- `dev.sh` — `build_mcp_servers()` auto-builds HackerNews binary before `start-go`
+- `.mcp_servers.example.json` — added `hackernews` entry
+
+**Key code:** `mcp-servers/hackernews/main.go`, `GetToolDefs()`, `parseMCPToolName()`, `executeTool()` MCP routing, `connectedServers`, `toggleServer()`, `activeMcpTools`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

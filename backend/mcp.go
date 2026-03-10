@@ -294,6 +294,68 @@ func (m *MCPManager) CallTool(ctx context.Context, server, tool string, args map
 
 // ─── HTTP handlers ────────────────────────────────────────────────────────────
 
+// parseMCPToolName splits a namespaced tool name of the form "server__toolname"
+// into its server and tool components. Returns ok=false if the name does not
+// contain the double-underscore separator.
+func parseMCPToolName(name string) (server, tool string, ok bool) {
+	idx := strings.Index(name, "__")
+	if idx < 0 {
+		return "", "", false
+	}
+	return name[:idx], name[idx+2:], true
+}
+
+// GetToolDefs returns toolDef entries for MCP tools. If toolNames is non-empty,
+// only tools whose namespaced name ("server__toolname") appears in the list are
+// returned. An empty toolNames returns every tool from every connected server.
+func (m *MCPManager) GetToolDefs(toolNames []string) []toolDef {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	// Build a lookup set from the requested names for O(1) access.
+	var filterSet map[string]struct{}
+	if len(toolNames) > 0 {
+		filterSet = make(map[string]struct{}, len(toolNames))
+		for _, n := range toolNames {
+			filterSet[n] = struct{}{}
+		}
+	}
+
+	var defs []toolDef
+	for _, conn := range m.connections {
+		if !conn.Connected {
+			continue
+		}
+		for _, t := range conn.Tools {
+			namespacedName := conn.Name + "__" + t.Name
+
+			if filterSet != nil {
+				if _, ok := filterSet[namespacedName]; !ok {
+					continue
+				}
+			}
+
+			// Convert ToolInputSchema to map[string]any via JSON round-trip so
+			// it is compatible with the toolDef.InputSchema field (typed as any).
+			schemaBytes, err := json.Marshal(t.InputSchema)
+			if err != nil {
+				continue
+			}
+			var inputSchema map[string]any
+			if err := json.Unmarshal(schemaBytes, &inputSchema); err != nil {
+				continue
+			}
+
+			defs = append(defs, toolDef{
+				Name:        namespacedName,
+				Description: t.Description,
+				InputSchema: inputSchema,
+			})
+		}
+	}
+	return defs
+}
+
 // handleMCPServers handles GET /api/mcp/servers.
 func handleMCPServers(w http.ResponseWriter, r *http.Request, mgr *MCPManager) {
 	if r.Method != http.MethodGet {

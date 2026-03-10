@@ -8,4 +8,5 @@ challenge
 finance-app/
 skills-lock.json
 *.png
+mcp-servers/hackernews/hackernews
 .mcp_servers.json

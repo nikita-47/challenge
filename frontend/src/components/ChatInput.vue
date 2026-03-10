@@ -71,6 +71,7 @@ function autoGrow(e: Event) {
           v-model:task-mode="taskMode"
           v-model:enabled-tools="enabledTools"
           v-model:invariants="invariants"
+          v-model:mcp-tools="chat.activeMcpTools"
         />
         <Button
           v-if="chat.isStreaming"

@@ -14,6 +14,8 @@
 - `.memory/` — слои памяти: `profiles/` (долгосрочная) + `projects/` (рабочая) + `operators/` (неизменяемая идентичность пользователя), .md файлы (не коммитится)
 - `.claude/agents/` — конфигурации субагентов: `go-backend-specialist.md` (backend, sonnet), `vue-frontend-specialist.md` (Vue/TS, sonnet), `qa-tester.md` (тестировщик, haiku)
 - `.sandbox/` — песочницы для агентов (не коммитится)
+- `mcp-servers/` — кастомные MCP-серверы (Go бинарники, stdio транспорт)
+- `mcp-servers/hackernews/` — MCP-сервер для HackerNews API (4 tools: top stories, get item, get user, search)
 - `.mcp_servers.json` — конфиг MCP-серверов (не коммитится), формат Claude Desktop
 - `.mcp_servers.example.json` — пример конфига MCP
 
@@ -32,6 +34,8 @@
 - **Инварианты**: пользовательские ограничения (invariants) передаются при создании задачи и инжектируются во все phase prompts через `formatInvariantsBlock()`. Агент обязан проверять инварианты перед каждым действием.
 - **Shared sandbox**: все фазы задачи работают в одной песочнице (`TaskState.SandboxDir`), создаётся через `EnsureSandbox()`, удаляется через `CleanupSandbox()` при завершении задачи.
 - **MCP клиент**: `MCPManager` в `backend/mcp.go` управляет множеством MCP-серверов через `mcp-go` библиотеку (первая внешняя зависимость). Конфиг `.mcp_servers.json` (формат Claude Desktop). Stdio транспорт — MCP-сервер как subprocess. HTTP API: `/api/mcp/servers`, `/api/mcp/tools`, `/api/mcp/tools/call`, `/api/mcp/reload`. Frontend: таб "mcp" в сайдбаре с Select dropdown, connect/disconnect, список tools.
+- **MCP сервер (HackerNews)**: `mcp-servers/hackernews/main.go` — standalone бинарник, stdio транспорт через `mcp-go/server`. 4 tools: `hn_top_stories`, `hn_get_item`, `hn_get_user`, `hn_search`. No API keys. Сборка: `go build -o mcp-servers/hackernews/hackernews ./mcp-servers/hackernews/`. `dev.sh` собирает автоматически при `start-go`.
+- **Agent ↔ MCP мост**: `GetToolDefs()` конвертирует MCP tools → agent `toolDef`. Naming: `server__toolname` (двойной underscore). `executeTool()` роутит MCP calls через `MCPManager.CallTool()`. Frontend: `activeMcpTools` в chat store, `mcpTools` в chatRequest. UI: SendSettingsPopover с группировкой по серверам.
 - **Динамические фазы**: вместо хардкоженного pipeline (planning→executing→validating→done) задача начинается с `PhaseProposing` — агент анализирует goal и предлагает кастомный pipeline через `submit_phases`. Пользователь может одобрить (approve) или отправить feedback для корректировки. `PhaseSpec` (Name/Type/Description/Status) маппится на существующих агентов по Type: `planning`→`newPlanningAgent`, `executing`→`newExecutingAgent`, `validating`→`newValidatingAgent`. Constraints: planning before executing, must end with validating, 2-5 phases. `validatePhases()` проверяет перед принятием.
 
 ## Рабочий процесс

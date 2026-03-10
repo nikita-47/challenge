@@ -1,5 +1,8 @@
 {
   "mcpServers": {
+    "hackernews": {
+      "command": "./mcp-servers/hackernews/hackernews"
+    },
     "railway": {
       "command": "npx",
       "args": ["-y", "@railway/mcp-server"]

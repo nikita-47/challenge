@@ -18,6 +18,14 @@ stop_go() {
     fi
 }
 
+build_mcp_servers() {
+    if [ -d "mcp-servers/hackernews" ]; then
+        echo "Building HackerNews MCP server..."
+        go build -o mcp-servers/hackernews/hackernews ./mcp-servers/hackernews/
+        echo "HackerNews MCP server built"
+    fi
+}
+
 start_go() {
     local pids
     pids=$(lsof -i :$GO_PORT -t 2>/dev/null)
@@ -25,6 +33,7 @@ start_go() {
         echo "Go server already running on port $GO_PORT (PID: $pids)"
         return
     fi
+    build_mcp_servers
     go run ./backend --server --port $GO_PORT &
     echo "Go server starting on port $GO_PORT"
 }

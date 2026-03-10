@@ -1,20 +1,38 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
+import { useMCPStore } from '@/stores/mcp'
 
 const props = defineProps<{
   taskMode: boolean
   enabledTools: string[]
   invariants: string[]
+  mcpTools: string[]
 }>()
 
 const emit = defineEmits<{
   'update:taskMode': [value: boolean]
   'update:enabledTools': [value: string[]]
   'update:invariants': [value: string[]]
+  'update:mcpTools': [value: string[]]
 }>()
+
+const mcp = useMCPStore()
+const connectedServers = computed(() => {
+  const grouped: { name: string; tools: typeof mcp.tools.value }[] = []
+  for (const srv of mcp.servers) {
+    if (!srv.connected) {
+      continue
+    }
+    const serverTools = mcp.tools.filter((t) => t.server === srv.name)
+    if (serverTools.length > 0) {
+      grouped.push({ name: srv.name, tools: serverTools })
+    }
+  }
+  return grouped
+})
 
 const isOpen = ref(false)
 const popoverRef = ref<HTMLDivElement | null>(null)
@@ -26,6 +44,51 @@ onClickOutside(popoverRef, () => {
 
 function togglePopover() {
   isOpen.value = !isOpen.value
+  if (isOpen.value && mcp.servers.length === 0) {
+    mcp.loadServers()
+    mcp.loadTools()
+  }
+}
+
+function toggleMcpTool(toolId: string, checked: boolean) {
+  if (checked) {
+    if (!props.mcpTools.includes(toolId)) {
+      emit('update:mcpTools', [...props.mcpTools, toolId])
+    }
+  } else {
+    emit('update:mcpTools', props.mcpTools.filter((t) => t !== toolId))
+  }
+}
+
+function isServerFullySelected(serverName: string) {
+  const srv = connectedServers.value.find((s) => s.name === serverName)
+  if (!srv) {
+    return false
+  }
+  return srv.tools.every((t) => props.mcpTools.includes(`${serverName}__${t.name}`))
+}
+
+function isServerPartiallySelected(serverName: string) {
+  const srv = connectedServers.value.find((s) => s.name === serverName)
+  if (!srv) {
+    return false
+  }
+  const selected = srv.tools.filter((t) => props.mcpTools.includes(`${serverName}__${t.name}`))
+  return selected.length > 0 && selected.length < srv.tools.length
+}
+
+function toggleServer(serverName: string, checked: boolean) {
+  const srv = connectedServers.value.find((s) => s.name === serverName)
+  if (!srv) {
+    return
+  }
+  const serverToolIds = srv.tools.map((t) => `${serverName}__${t.name}`)
+  if (checked) {
+    const merged = new Set([...props.mcpTools, ...serverToolIds])
+    emit('update:mcpTools', [...merged])
+  } else {
+    emit('update:mcpTools', props.mcpTools.filter((t) => !serverToolIds.includes(t)))
+  }
 }
 
 function setTaskMode(value: boolean) {
@@ -62,7 +125,9 @@ function removeInvariant(index: number) {
       class="px-2 py-1 text-xs border transition-colors"
       :class="taskMode
         ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40'
-        : 'text-muted-foreground border-transparent hover:text-foreground hover:border-border'"
+        : mcpTools.length > 0
+          ? 'bg-violet-500/20 text-violet-400 border-violet-500/40'
+          : 'text-muted-foreground border-transparent hover:text-foreground hover:border-border'"
       title="Send settings"
       @click="togglePopover"
     >
@@ -84,7 +149,7 @@ function removeInvariant(index: number) {
 
     <div
       v-if="isOpen"
-      class="absolute bottom-full right-0 mb-2 w-64 bg-card border border-border shadow-lg rounded-sm p-3 flex flex-col gap-2 z-50"
+      class="absolute bottom-full right-0 mb-2 w-72 max-h-80 overflow-y-auto bg-card border border-border shadow-lg rounded-sm p-3 flex flex-col gap-2 z-50"
     >
       <p class="text-xs text-muted-foreground font-medium">Send settings</p>
 
@@ -157,6 +222,48 @@ function removeInvariant(index: number) {
           >
             +
           </button>
+        </div>
+      </template>
+
+      <template v-if="connectedServers.length > 0">
+        <Separator />
+        <p class="text-xs text-muted-foreground font-medium">MCP Servers</p>
+        <div v-for="srv in connectedServers" :key="srv.name" class="flex flex-col gap-1.5">
+          <div class="flex items-center gap-2">
+            <Checkbox
+              :id="`mcp-srv-${srv.name}`"
+              :checked="isServerFullySelected(srv.name) || isServerPartiallySelected(srv.name)"
+              @update:checked="(v) => toggleServer(srv.name, !isServerFullySelected(srv.name))"
+            />
+            <label
+              :for="`mcp-srv-${srv.name}`"
+              class="text-xs text-foreground cursor-pointer select-none font-medium"
+            >
+              {{ srv.name }}
+            </label>
+            <span class="text-[10px] text-muted-foreground ml-auto">
+              {{ srv.tools.filter(t => mcpTools.includes(`${srv.name}__${t.name}`)).length }}/{{ srv.tools.length }}
+            </span>
+          </div>
+          <div class="pl-5 flex flex-col gap-1">
+            <div
+              v-for="tool in srv.tools"
+              :key="`${srv.name}__${tool.name}`"
+              class="flex items-center gap-2"
+            >
+              <Checkbox
+                :id="`mcp-${srv.name}-${tool.name}`"
+                :checked="mcpTools.includes(`${srv.name}__${tool.name}`)"
+                @update:checked="(v) => toggleMcpTool(`${srv.name}__${tool.name}`, v)"
+              />
+              <label
+                :for="`mcp-${srv.name}-${tool.name}`"
+                class="text-xs text-foreground/80 cursor-pointer select-none font-mono"
+              >
+                {{ tool.name }}
+              </label>
+            </div>
+          </div>
         </div>
       </template>
     </div>

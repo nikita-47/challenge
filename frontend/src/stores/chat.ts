@@ -28,6 +28,7 @@ export const useChatStore = defineStore('chat', () => {
   const activeBranch = ref('main')
   const taskState = ref<TaskState | null>(null)
   const activeEnabledTools = ref<string[]>([])
+  const activeMcpTools = ref<string[]>([])
 
   let abortController: AbortController | null = null
 
@@ -55,6 +56,7 @@ export const useChatStore = defineStore('chat', () => {
     activeBranch.value = 'main'
     taskState.value = null
     activeEnabledTools.value = []
+    activeMcpTools.value = []
   }
 
   const tokensSaved = ref(0)
@@ -104,6 +106,9 @@ export const useChatStore = defineStore('chat', () => {
         taskMode: true,
         enabledTools: activeEnabledTools.value,
         invariants: taskState.value.invariants,
+      }),
+      ...(activeMcpTools.value.length > 0 && {
+        mcpTools: activeMcpTools.value,
       }),
       ...(settings.value && {
         model: settings.value.model,
@@ -306,6 +311,7 @@ export const useChatStore = defineStore('chat', () => {
     activeBranch,
     taskState,
     activeEnabledTools,
+    activeMcpTools,
     startTask,
     continueTask,
     cancelTask,

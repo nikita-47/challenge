@@ -45,14 +45,6 @@ func startServer(apiKey string, cfg config) {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		handleChat(w, r, apiKey)
-	})
-
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -167,6 +159,15 @@ func startServer(apiKey string, cfg config) {
 	}
 	mcpMgr.ConnectAll(context.Background())
 	defer mcpMgr.DisconnectAll()
+
+	// Register /api/chat here so mcpMgr is in scope for the closure.
+	mux.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handleChat(w, r, apiKey, mcpMgr)
+	})
 
 	// ─── MCP endpoints ──────────────────────────────────────────────────────
 	mux.HandleFunc("/api/mcp/servers", func(w http.ResponseWriter, r *http.Request) {
@@ -600,9 +601,10 @@ type chatRequest struct {
 	TaskMode     bool     `json:"taskMode"`
 	EnabledTools []string `json:"enabledTools"`
 	Invariants   []string `json:"invariants"`
+	McpTools     []string `json:"mcpTools"`
 }
 
-func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
+func handleChat(w http.ResponseWriter, r *http.Request, apiKey string, mcpMgr *MCPManager) {
 	var req chatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
@@ -760,7 +762,14 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string) {
 		sseWrite(w, AgentEvent{Type: "done"})
 	} else {
 		// Claude API path.
-		agent := newAgent(apiKey, cfg)
+		var agent *Agent
+		if len(req.McpTools) > 0 && mcpMgr != nil {
+			agent = newAgentWithTools(apiKey, cfg)
+			agent.tools = append(agent.tools, mcpMgr.GetToolDefs(req.McpTools)...)
+			agent.mcpMgr = mcpMgr
+		} else {
+			agent = newAgent(apiKey, cfg)
+		}
 
 		result, chatErr = agent.Run(req.Message, compressed, emit)
 		agent.Cleanup()
