@@ -24,6 +24,11 @@ build_mcp_servers() {
         go build -o mcp-servers/hackernews/hackernews ./mcp-servers/hackernews/
         echo "HackerNews MCP server built"
     fi
+    if [ -d "mcp-servers/scheduler" ]; then
+        echo "Building Scheduler MCP server..."
+        go build -o mcp-servers/scheduler/scheduler ./mcp-servers/scheduler/
+        echo "Scheduler MCP server built"
+    fi
 }
 
 start_go() {

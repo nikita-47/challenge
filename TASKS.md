@@ -403,6 +403,24 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 19 — Scheduler MCP Server (Background Tasks) ✅
+
+**Assignment:** Create an MCP tool with scheduled or periodic execution. The tool should save data (JSON), execute on schedule, and return aggregated results. An agent that works 24/7 and periodically produces summaries.
+
+**What was built on top of previous day:**
+- `mcp-servers/scheduler/store.go` — `Store` with `sync.RWMutex`, JSON persistence (`scheduler_data.json`), ring buffer results (max 50), debounced save (2s timer), CRUD methods, `crypto/rand` ID generation
+- `mcp-servers/scheduler/runner.go` — `RunTask()` dispatcher, `runReminder()` (one-shot `time.Timer`), `runURLMonitor()` (periodic `time.Ticker` + HTTP GET with timing/size), `runHNDigest()` (periodic HN Firebase fetch), `fetchURL()`, `fetchHNTopStories()`
+- `mcp-servers/scheduler/main.go` — MCP server with 6 tools (`sched_create`, `sched_list`, `sched_status`, `sched_delete`, `sched_pause`, `sched_resume`), startup task restoration from JSON, `rootCtx` for goroutine lifecycle, `dataFilePath()` with env override
+- `dev.sh` — scheduler build in `build_mcp_servers()`
+- `.mcp_servers.example.json` — scheduler entry
+- `.gitignore` — scheduler binary + data file
+
+**3 task types:** `reminder` (one-shot after delay), `url_monitor` (periodic HTTP health check with uptime%/avg response), `hn_digest` (periodic HackerNews top stories digest)
+
+**Key code:** `Store`, `RunTask()`, `runURLMonitor()`, `runHNDigest()`, `runReminder()`, `fetchURL()`, `handleCreate()`, `handleStatus()`, `debouncedSave()`, `generateID()`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

@@ -9,4 +9,6 @@ finance-app/
 skills-lock.json
 *.png
 mcp-servers/hackernews/hackernews
+mcp-servers/scheduler/scheduler
+mcp-servers/scheduler/scheduler_data.json
 .mcp_servers.json

@@ -3,6 +3,9 @@
     "hackernews": {
       "command": "./mcp-servers/hackernews/hackernews"
     },
+    "scheduler": {
+      "command": "./mcp-servers/scheduler/scheduler"
+    },
     "railway": {
       "command": "npx",
       "args": ["-y", "@railway/mcp-server"]
