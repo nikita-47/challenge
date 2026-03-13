@@ -421,6 +421,28 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 20 — Pipeline MCP Server + Full-Screen Layout ✅
+
+**Assignment:** Create a pipeline MCP server (search → summarize → save), build a full-screen pipeline UI (replacing cramped sidebar tab), add run deletion, and integrate scheduler with pipeline for delayed execution from chat.
+
+**What was built on top of previous day:**
+- `mcp-servers/pipeline/main.go` — standalone MCP server (stdio), 7 tools: `pipe_search`, `pipe_summarize`, `pipe_save`, `pipe_run`, `pipe_status`, `pipe_list`, `pipe_delete`. HackerNews Algolia search → Claude Haiku summarization → file save.
+- `mcp-servers/pipeline/store.go` — `Store` with `sync.RWMutex`, JSON persistence, debounced save, `Delete()` method with running-status guard
+- `mcp-servers/pipeline/runner.go` — `RunPipeline()` in goroutine: 3 steps (search → summarize → save), step-level status tracking
+- `frontend/src/components/PipelineView.vue` — full-screen pipeline layout: header bar (query input + run button + back to chat), left column (280px runs list with delete ×), center (horizontal flow diagram + output panel for selected step)
+- `frontend/src/components/PipelinePanel.vue` — original sidebar pipeline panel (now replaced by PipelineView)
+- `frontend/src/stores/pipeline.ts` — Pinia store: `loadList()`, `loadStatus()`, `startPipeline()`, `deleteRun()`, polling with auto-stop
+- `frontend/src/stores/ui.ts` — `activeView: 'chat' | 'pipeline'` + `setView()` for view-level switching
+- `frontend/src/App.vue` — conditional rendering: PipelineView vs chat layout
+- `frontend/src/components/SessionPanel.vue` — pipeline tab removed, "▸ pipeline" button added for view switch
+- `mcp-servers/scheduler/store.go` — `TypePipeline` task type
+- `mcp-servers/scheduler/main.go` — `pipeline` type in `sched_create` with `query`, `backend_url` params
+- `mcp-servers/scheduler/runner.go` — `runPipeline()`: one-shot Timer → HTTP POST to backend `/api/mcp/tools/call` → triggers `pipe_run`
+
+**Key code:** `PipelineView.vue`, `usePipelineStore`, `pipe_delete`, `handleDelete()`, `Store.Delete()`, `runPipeline()`, `pipelineClient`, `TypePipeline`, `activeView`, `setView()`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

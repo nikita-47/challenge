@@ -11,4 +11,10 @@ skills-lock.json
 mcp-servers/hackernews/hackernews
 mcp-servers/scheduler/scheduler
 mcp-servers/scheduler/scheduler_data.json
+mcp-servers/pipeline/pipeline
+mcp-servers/pipeline/pipeline_data.json
+mcp-servers/pipeline/pipeline_output/
+/pipeline
+/scheduler
+notebook.txt
 .mcp_servers.json

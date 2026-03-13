@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -27,6 +28,8 @@ func RunTask(ctx context.Context, store *Store, taskID string) {
 		runURLMonitor(ctx, store, task)
 	case TypeHNDigest:
 		runHNDigest(ctx, store, task)
+	case TypePipeline:
+		runPipeline(ctx, store, task)
 	}
 }
 
@@ -150,6 +153,88 @@ func runHNDigest(ctx context.Context, store *Store, task *Task) {
 			}
 			store.AppendResult(task.ID, result)
 		}
+	}
+}
+
+// pipelineClient has a longer timeout for pipeline runs that involve AI summarization.
+var pipelineClient = &http.Client{Timeout: 120 * time.Second}
+
+// runPipeline fires once after the given delay, calling pipe_run via backend API.
+func runPipeline(ctx context.Context, store *Store, task *Task) {
+	delayStr := task.Params["delay"]
+	if delayStr == "" {
+		delayStr = task.Interval
+	}
+
+	delay, err := time.ParseDuration(delayStr)
+	if err != nil {
+		store.AppendResult(task.ID, TaskResult{
+			Timestamp: time.Now(),
+			Success:   false,
+			Error:     fmt.Sprintf("invalid delay %q: %v", delayStr, err),
+		})
+		return
+	}
+
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return
+	case <-timer.C:
+		backendURL := task.Params["backend_url"]
+		if backendURL == "" {
+			backendURL = "http://localhost:8080"
+		}
+
+		query := task.Params["query"]
+		count := task.Params["count"]
+		if count == "" {
+			count = "5"
+		}
+
+		body := fmt.Sprintf(`{"server":"pipeline","tool":"pipe_run","arguments":{"query":%q,"count":%s}}`,
+			query, count)
+
+		req, reqErr := http.NewRequestWithContext(ctx, "POST",
+			backendURL+"/api/mcp/tools/call",
+			strings.NewReader(body))
+		if reqErr != nil {
+			store.AppendResult(task.ID, TaskResult{
+				Timestamp: time.Now(),
+				Success:   false,
+				Error:     fmt.Sprintf("failed to create request: %v", reqErr),
+			})
+			store.UpdateStatus(task.ID, StatusDone)
+			store.CancelRunner(task.ID)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, respErr := pipelineClient.Do(req)
+		if respErr != nil {
+			store.AppendResult(task.ID, TaskResult{
+				Timestamp: time.Now(),
+				Success:   false,
+				Error:     fmt.Sprintf("HTTP request failed: %v", respErr),
+			})
+			store.UpdateStatus(task.ID, StatusDone)
+			store.CancelRunner(task.ID)
+			return
+		}
+		defer resp.Body.Close()
+
+		respBody, _ := io.ReadAll(resp.Body)
+		success := resp.StatusCode >= 200 && resp.StatusCode < 400
+
+		store.AppendResult(task.ID, TaskResult{
+			Timestamp: time.Now(),
+			Success:   success,
+			Data:      string(respBody),
+		})
+		store.UpdateStatus(task.ID, StatusDone)
+		store.CancelRunner(task.ID)
 	}
 }
 

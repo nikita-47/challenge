@@ -193,6 +193,28 @@ export type SSEEvent =
   | { type: 'memory_updated' }
   | { type: 'text'; Text: string }
 
+// ─── Pipeline Types ─────────────────────────────────────────────────────────
+export type PipelineStepStatus = 'pending' | 'running' | 'done' | 'error'
+
+export interface PipelineStep {
+  name: string
+  status: PipelineStepStatus
+  started_at?: string
+  finished_at?: string
+  output?: string
+  error?: string
+}
+
+export interface PipelineRun {
+  id: string
+  query: string
+  source: string
+  status: PipelineStepStatus
+  steps: PipelineStep[]
+  output_file?: string
+  created_at: string
+}
+
 // ─── MCP Types ──────────────────────────────────────────────────────────────
 export interface MCPServerStatus {
   name: string

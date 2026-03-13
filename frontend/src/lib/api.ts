@@ -326,3 +326,23 @@ export async function reloadMCPConfig() {
   }
   return resp.json()
 }
+
+export async function callMCPTool(server: string, tool: string, args: Record<string, unknown>): Promise<string> {
+  const resp = await fetch('/api/mcp/tools/call', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ server, tool, arguments: args }),
+  })
+  if (!resp.ok) {
+    throw new Error(`MCP tool call failed: ${resp.statusText}`)
+  }
+  const data = await resp.json()
+  // MCP CallToolResult format: { content: [{type: "text", text: "..."}], isError: bool }
+  if (Array.isArray(data.content)) {
+    const texts = data.content
+      .filter((c: Record<string, unknown>) => c.type === 'text')
+      .map((c: Record<string, unknown>) => c.text)
+    return texts.join('\n')
+  }
+  return data.result ?? JSON.stringify(data)
+}

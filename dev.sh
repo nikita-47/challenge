@@ -29,6 +29,11 @@ build_mcp_servers() {
         go build -o mcp-servers/scheduler/scheduler ./mcp-servers/scheduler/
         echo "Scheduler MCP server built"
     fi
+    if [ -d "mcp-servers/pipeline" ]; then
+        echo "Building Pipeline MCP server..."
+        go build -o mcp-servers/pipeline/pipeline ./mcp-servers/pipeline/
+        echo "Pipeline MCP server built"
+    fi
 }
 
 start_go() {

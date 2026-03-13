@@ -42,14 +42,16 @@ func main() {
 
 	s.AddTool(
 		mcp.NewTool("sched_create",
-			mcp.WithDescription("Create a new scheduled task. Types: reminder (one-shot after delay), url_monitor (periodic HTTP check), hn_digest (periodic HackerNews digest)."),
+			mcp.WithDescription("Create a new scheduled task. Types: reminder (one-shot after delay), url_monitor (periodic HTTP check), hn_digest (periodic HackerNews digest), pipeline (one-shot delayed pipeline run via backend)."),
 			mcp.WithString("name", mcp.Required(), mcp.Description("Human-readable task name")),
-			mcp.WithString("type", mcp.Required(), mcp.Description("Task type: reminder, url_monitor, or hn_digest")),
+			mcp.WithString("type", mcp.Required(), mcp.Description("Task type: reminder, url_monitor, hn_digest, or pipeline")),
 			mcp.WithString("interval", mcp.Description("Repeat interval for url_monitor/hn_digest (e.g. 5m, 1h, 30s)")),
 			mcp.WithString("url", mcp.Description("URL to monitor (required for url_monitor)")),
 			mcp.WithString("message", mcp.Description("Reminder message (required for reminder)")),
 			mcp.WithString("delay", mcp.Description("One-shot delay for reminder (e.g. 10s, 5m, 1h)")),
 			mcp.WithNumber("count", mcp.Description("Number of HN stories in digest (default 5, for hn_digest)")),
+		mcp.WithString("query", mcp.Description("Search query for pipeline task (required for pipeline type)")),
+		mcp.WithString("backend_url", mcp.Description("Backend API URL for pipeline execution (default http://localhost:8080)")),
 		),
 		handleCreate,
 	)
@@ -136,10 +138,10 @@ func handleCreate(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 	}
 
 	switch TaskType(taskType) {
-	case TypeReminder, TypeURLMonitor, TypeHNDigest:
+	case TypeReminder, TypeURLMonitor, TypeHNDigest, TypePipeline:
 		// valid
 	default:
-		return mcp.NewToolResultError(fmt.Sprintf("unknown task type %q; valid: reminder, url_monitor, hn_digest", taskType)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("unknown task type %q; valid: reminder, url_monitor, hn_digest, pipeline", taskType)), nil
 	}
 
 	params := make(map[string]string)
@@ -193,6 +195,38 @@ func handleCreate(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResu
 			count = v
 		}
 		params["count"] = fmt.Sprintf("%d", count)
+
+	case TypePipeline:
+		query, _ := req.RequireString("query")
+		if query == "" {
+			return mcp.NewToolResultError("query is required for pipeline"), nil
+		}
+		params["query"] = query
+
+		count := 5
+		if v, countErr := req.RequireInt("count"); countErr == nil && v > 0 {
+			count = v
+		}
+		params["count"] = fmt.Sprintf("%d", count)
+
+		backendURL, _ := req.RequireString("backend_url")
+		if backendURL == "" {
+			backendURL = "http://localhost:8080"
+		}
+		params["backend_url"] = backendURL
+
+		delay, _ := req.RequireString("delay")
+		if delay == "" {
+			delay, _ = req.RequireString("interval")
+		}
+		if delay == "" {
+			return mcp.NewToolResultError("delay is required for pipeline (e.g. 10s, 5m)"), nil
+		}
+		if _, parseErr := time.ParseDuration(delay); parseErr != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("invalid delay %q: %v", delay, parseErr)), nil
+		}
+		params["delay"] = delay
+		interval = delay
 	}
 
 	id, idErr := generateID()

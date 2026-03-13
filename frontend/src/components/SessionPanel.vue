@@ -320,6 +320,16 @@ watch(tab, (v) => {
     <!-- MCP tab -->
     <MCPPanel v-else-if="tab === 'mcp'" class="flex-1 min-h-0" />
 
+    <!-- Pipeline view button -->
+    <div class="shrink-0 px-3 py-2 border-t border-primary/10">
+      <button
+        class="w-full text-left text-xs font-mono text-muted-foreground hover:text-primary transition-colors px-2 py-1.5 border border-transparent hover:border-primary/20 hover:bg-primary/5"
+        @click="ui.setView('pipeline')"
+      >
+        ▸ pipeline
+      </button>
+    </div>
+
     <GlobalSettings />
 
     <MemoryEditorDialog

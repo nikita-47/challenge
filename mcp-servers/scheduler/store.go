@@ -18,6 +18,7 @@ const (
 	TypeReminder   TaskType = "reminder"
 	TypeURLMonitor TaskType = "url_monitor"
 	TypeHNDigest   TaskType = "hn_digest"
+	TypePipeline   TaskType = "pipeline"
 )
 
 // TaskStatus represents the current state of a task.

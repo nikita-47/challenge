@@ -7,11 +7,16 @@ export const useUIStore = defineStore('ui', () => {
   const rightSidebarOpen = ref(false)
   const config = ref<AppConfig | null>(null)
   const newChatDialogOpen = ref(false)
+  const activeView = ref<'chat' | 'pipeline'>('chat')
   const providerSettings = ref<ProviderSettings>({
     provider: 'local',
     localURL: 'http://localhost:1234',
     localModel: 'qwen2.5-0.5b-instruct-mlx',
   })
+
+  function setView(view: 'chat' | 'pipeline') {
+    activeView.value = view
+  }
 
   function toggleLeftSidebar() {
     leftSidebarOpen.value = !leftSidebarOpen.value
@@ -47,10 +52,12 @@ export const useUIStore = defineStore('ui', () => {
     config,
     newChatDialogOpen,
     providerSettings,
+    activeView,
     toggleLeftSidebar,
     toggleRightSidebar,
     loadConfig,
     loadSettings,
     saveSettings,
+    setView,
   }
 })

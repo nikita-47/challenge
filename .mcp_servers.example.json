@@ -9,6 +9,12 @@
     "railway": {
       "command": "npx",
       "args": ["-y", "@railway/mcp-server"]
+    },
+    "pipeline": {
+      "command": "./mcp-servers/pipeline/pipeline",
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-..."
+      }
     }
   }
 }

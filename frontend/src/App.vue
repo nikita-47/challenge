@@ -8,6 +8,7 @@ import ChatInput from '@/components/ChatInput.vue'
 import TokenBar from '@/components/TokenBar.vue'
 import BranchSelector from '@/components/BranchSelector.vue'
 import TaskStatePanel from '@/components/TaskStatePanel.vue'
+import PipelineView from '@/components/PipelineView.vue'
 import { Button } from '@/components/ui/button'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
@@ -29,7 +30,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-screen w-screen overflow-hidden bg-background">
+  <!-- Pipeline full-screen view -->
+  <PipelineView v-if="ui.activeView === 'pipeline'" />
+
+  <!-- Chat view -->
+  <div v-else class="flex h-screen w-screen overflow-hidden bg-background">
     <!-- Left sidebar -->
     <SessionPanel
       v-if="ui.leftSidebarOpen"
