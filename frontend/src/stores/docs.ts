@@ -24,11 +24,11 @@ export const useDocsStore = defineStore('docs', () => {
     }
   }
 
-  async function upload(file: File): Promise<void> {
+  async function upload(file: File, chunkSize?: number, overlap?: number): Promise<void> {
     uploading.value = true
     error.value = null
     try {
-      const doc = await uploadDoc(file)
+      const doc = await uploadDoc(file, chunkSize, overlap)
       documents.value = [doc, ...documents.value]
       await selectDoc(doc.id)
       startPolling(doc.id)

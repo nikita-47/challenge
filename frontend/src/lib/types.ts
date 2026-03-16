@@ -231,6 +231,8 @@ export interface DocumentMeta {
   index_status: IndexStatus
   index_error?: string
   embedding_model: string
+  chunk_size_param: number
+  overlap_param: number
 }
 
 export interface DocumentChunk {
@@ -239,6 +241,15 @@ export interface DocumentChunk {
   text: string
   index: number
   metadata: Record<string, string>
+  similarity_to_next: number | null
+  embedding_dim: number
+}
+
+export interface StrategyResult {
+  chunks: DocumentChunk[]
+  avg_similarity: number
+  min_similarity: number
+  max_similarity: number
 }
 
 export interface ChunkIndex {
@@ -246,9 +257,10 @@ export interface ChunkIndex {
   filename: string
   embedding_model: string
   created_at: string
-  size: DocumentChunk[]
-  sentence: DocumentChunk[]
-  structure: DocumentChunk[]
+  size: StrategyResult
+  sentence: StrategyResult
+  structure: StrategyResult
+  semantic: StrategyResult
 }
 
 // ─── MCP Types ──────────────────────────────────────────────────────────────

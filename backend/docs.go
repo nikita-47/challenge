@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,17 +18,19 @@ import (
 
 // DocumentMeta holds metadata for an uploaded and indexed document.
 type DocumentMeta struct {
-	ID             string    `json:"id"`
-	Filename       string    `json:"filename"`
-	OriginalName   string    `json:"original_name"`
-	ContentType    string    `json:"content_type"`
-	Size           int64     `json:"size"`
-	UploadedAt     time.Time `json:"uploaded_at"`
-	ChunkCount     int       `json:"chunk_count"`
-	ChunkStrategy  string    `json:"chunk_strategy"`
-	IndexStatus    string    `json:"index_status"`
-	IndexError     string    `json:"index_error,omitempty"`
-	EmbeddingModel string    `json:"embedding_model"`
+	ID              string    `json:"id"`
+	Filename        string    `json:"filename"`
+	OriginalName    string    `json:"original_name"`
+	ContentType     string    `json:"content_type"`
+	Size            int64     `json:"size"`
+	UploadedAt      time.Time `json:"uploaded_at"`
+	ChunkCount      int       `json:"chunk_count"`
+	ChunkStrategy   string    `json:"chunk_strategy"`
+	IndexStatus     string    `json:"index_status"`
+	IndexError      string    `json:"index_error,omitempty"`
+	EmbeddingModel  string    `json:"embedding_model"`
+	ChunkSizeParam  int       `json:"chunk_size_param"`
+	OverlapParam    int       `json:"overlap_param"`
 }
 
 // DocumentStore manages documents with thread-safe access and JSON persistence.
@@ -176,6 +179,25 @@ func generateDocID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// parseIntParam parses a string as an int, returning defaultVal if empty or invalid.
+// The result is clamped to [min, max].
+func parseIntParam(s string, defaultVal, min, max int) int {
+	if s == "" {
+		return defaultVal
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return defaultVal
+	}
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
 // ─── HTTP handlers ────────────────────────────────────────────────────────────
 
 func handleListDocs(w http.ResponseWriter, r *http.Request, store *DocumentStore) {
@@ -237,6 +259,9 @@ func handleUploadDoc(w http.ResponseWriter, r *http.Request, store *DocumentStor
 		contentType = "application/pdf"
 	}
 
+	chunkSize := parseIntParam(r.FormValue("chunk_size"), 1000, 100, 5000)
+	overlap := parseIntParam(r.FormValue("overlap"), 200, 0, chunkSize/2)
+
 	doc := &DocumentMeta{
 		ID:             id,
 		Filename:       storedFilename,
@@ -247,10 +272,12 @@ func handleUploadDoc(w http.ResponseWriter, r *http.Request, store *DocumentStor
 		ChunkStrategy:  "all",
 		IndexStatus:    "pending",
 		EmbeddingModel: "nomic-embed-text",
+		ChunkSizeParam: chunkSize,
+		OverlapParam:   overlap,
 	}
 	store.Add(doc)
 
-	go runIndexPipeline(store, doc, destPath)
+	go runIndexPipeline(store, doc, destPath, chunkSize, overlap)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -319,8 +346,16 @@ func handleGetChunks(w http.ResponseWriter, r *http.Request, store *DocumentStor
 		return
 	}
 
+	var idx CombinedIndex
+	if err := json.Unmarshal(data, &idx); err != nil {
+		http.Error(w, "failed to parse index: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := buildChunkResponse(&idx)
+
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(data)
+	json.NewEncoder(w).Encode(resp)
 }
 
 // handleDocsSubroute returns an http.HandlerFunc that dispatches /api/docs/{id}[/action] routes.

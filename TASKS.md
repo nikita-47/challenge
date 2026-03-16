@@ -463,6 +463,21 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 22 — Semantic Chunking + UI Polish ✅
+
+**Assignment:** Add 4th chunking strategy (semantic — embedding-based boundary detection), fix text preservation in semantic chunks, replace native tooltips with shadcn Tooltip, migrate custom HTML elements to shadcn components.
+
+**What was built on top of previous day:**
+- `backend/chunker.go` — `ChunkSemantic()`: embed each sentence → cosine similarity between adjacent → boundary where sim < mean−1σ. `splitSentenceSpans()` tracks byte offsets to preserve original formatting (newlines, indentation) instead of `strings.Join`
+- `backend/similarity.go` — new file: `cosineSimilarity()`, `buildChunkResponse()` strips raw embeddings from API response, returns `ChunkWithSimilarity` with per-chunk similarity + aggregate stats (`StrategyResult`)
+- `backend/indexer.go` — pipeline extended to 4 strategies (size, sentence, structure, semantic)
+- `frontend/src/components/DocsView.vue` — all `title` attrs → shadcn `Tooltip`/`TooltipContent`/`TooltipProvider`. Custom spans → `Badge`, `Input`, `Button`. Click-to-expand full chunk text. Size/overlap params labeled as size-based strategy. Number input spinners hidden
+- `frontend/src/components/ui/tooltip/` — shadcn tooltip component added
+
+**Key code:** `ChunkSemantic()`, `splitSentenceSpans()`, `sentenceSpan`, `cosineSimilarity()`, `buildChunkResponse()`, `ChunkWithSimilarity`, `StrategyResult`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

@@ -338,9 +338,15 @@ export async function fetchDocs(): Promise<DocumentMeta[]> {
   return data ?? []
 }
 
-export async function uploadDoc(file: File): Promise<DocumentMeta> {
+export async function uploadDoc(file: File, chunkSize?: number, overlap?: number): Promise<DocumentMeta> {
   const form = new FormData()
   form.append('file', file)
+  if (chunkSize !== undefined) {
+    form.append('chunk_size', String(chunkSize))
+  }
+  if (overlap !== undefined) {
+    form.append('overlap', String(overlap))
+  }
   const resp = await fetch('/api/docs/upload', { method: 'POST', body: form })
   if (!resp.ok) {
     throw new Error(`Failed to upload document: ${resp.statusText}`)

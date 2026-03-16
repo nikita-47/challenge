@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// CombinedIndex is the persisted index for a document, containing all 3 chunking strategies.
+// CombinedIndex is the persisted index for a document, containing all 4 chunking strategies.
 type CombinedIndex struct {
 	DocID          string         `json:"doc_id"`
 	Filename       string         `json:"filename"`
@@ -19,6 +19,7 @@ type CombinedIndex struct {
 	Size           []IndexedChunk `json:"size"`
 	Sentence       []IndexedChunk `json:"sentence"`
 	Structure      []IndexedChunk `json:"structure"`
+	Semantic       []IndexedChunk `json:"semantic"`
 }
 
 // IndexedChunk extends Chunk with a pre-computed embedding vector.
@@ -27,14 +28,14 @@ type IndexedChunk struct {
 	Embedding []float64 `json:"embedding"`
 }
 
-// runIndexPipeline asynchronously indexes a document using all 3 chunking strategies.
-func runIndexPipeline(store *DocumentStore, doc *DocumentMeta, filePath string) {
+// runIndexPipeline asynchronously indexes a document using all 4 chunking strategies.
+func runIndexPipeline(store *DocumentStore, doc *DocumentMeta, filePath string, chunkSize, overlap int) {
 	doc.IndexStatus = "indexing"
 	store.Update(doc)
 
 	indexPath := filepath.Join(store.indexDir, doc.ID+".json")
 
-	if err := doIndex(store, doc, filePath, indexPath); err != nil {
+	if err := doIndex(store, doc, filePath, indexPath, chunkSize, overlap); err != nil {
 		log.Printf("[indexer] error indexing %s: %v", doc.ID, err)
 		doc.IndexStatus = "error"
 		doc.IndexError = err.Error()
@@ -47,9 +48,9 @@ func runIndexPipeline(store *DocumentStore, doc *DocumentMeta, filePath string) 
 	store.Update(doc)
 }
 
-// doIndex performs the actual indexing work across all 3 strategies and returns any error.
-func doIndex(store *DocumentStore, doc *DocumentMeta, filePath string, indexPath string) error {
-	var sizeChunks, sentenceChunks, structureChunks []Chunk
+// doIndex performs the actual indexing work across all 4 strategies and returns any error.
+func doIndex(store *DocumentStore, doc *DocumentMeta, filePath string, indexPath string, chunkSize, overlap int) error {
+	var sizeChunks, sentenceChunks, structureChunks, semanticChunks []Chunk
 
 	if doc.ContentType == "application/pdf" {
 		pages, err := ExtractPDFText(filePath)
@@ -58,9 +59,10 @@ func doIndex(store *DocumentStore, doc *DocumentMeta, filePath string, indexPath
 		}
 		combined := strings.Join(pages, "\n\n")
 
-		sizeChunks = ChunkSize(combined, doc.ID, doc.OriginalName, 1000, 200)
+		sizeChunks = ChunkSize(combined, doc.ID, doc.OriginalName, chunkSize, overlap)
 		sentenceChunks = ChunkSentence(combined, doc.ID, doc.OriginalName, 5, 1)
 		structureChunks = chunkPDF(pages, doc.ID, doc.OriginalName)
+		semanticChunks = ChunkSemantic(combined, doc.ID, doc.OriginalName)
 	} else {
 		data, err := os.ReadFile(filePath)
 		if err != nil {
@@ -68,9 +70,10 @@ func doIndex(store *DocumentStore, doc *DocumentMeta, filePath string, indexPath
 		}
 		text := string(data)
 
-		sizeChunks = ChunkSize(text, doc.ID, doc.OriginalName, 1000, 200)
+		sizeChunks = ChunkSize(text, doc.ID, doc.OriginalName, chunkSize, overlap)
 		sentenceChunks = ChunkSentence(text, doc.ID, doc.OriginalName, 5, 1)
 		structureChunks = ChunkStructure(text, doc.ID, doc.OriginalName, doc.ContentType)
+		semanticChunks = ChunkSemantic(text, doc.ID, doc.OriginalName)
 	}
 
 	indexedSize, err := embedChunks(sizeChunks)
@@ -88,7 +91,12 @@ func doIndex(store *DocumentStore, doc *DocumentMeta, filePath string, indexPath
 		return fmt.Errorf("embedding structure chunks failed: %w", err)
 	}
 
-	combined := CombinedIndex{
+	indexedSemantic, err := embedChunks(semanticChunks)
+	if err != nil {
+		return fmt.Errorf("embedding semantic chunks failed: %w", err)
+	}
+
+	idx := CombinedIndex{
 		DocID:          doc.ID,
 		Filename:       doc.OriginalName,
 		EmbeddingModel: ollamaEmbeddingModel,
@@ -96,9 +104,10 @@ func doIndex(store *DocumentStore, doc *DocumentMeta, filePath string, indexPath
 		Size:           indexedSize,
 		Sentence:       indexedSentence,
 		Structure:      indexedStructure,
+		Semantic:       indexedSemantic,
 	}
 
-	jsonData, err := json.MarshalIndent(combined, "", "  ")
+	jsonData, err := json.MarshalIndent(idx, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal combined index: %w", err)
 	}
@@ -107,7 +116,7 @@ func doIndex(store *DocumentStore, doc *DocumentMeta, filePath string, indexPath
 		return fmt.Errorf("failed to write index file: %w", err)
 	}
 
-	doc.ChunkCount = len(sizeChunks) + len(sentenceChunks) + len(structureChunks)
+	doc.ChunkCount = len(sizeChunks) + len(sentenceChunks) + len(structureChunks) + len(semanticChunks)
 	doc.ChunkStrategy = "all"
 	doc.EmbeddingModel = ollamaEmbeddingModel
 

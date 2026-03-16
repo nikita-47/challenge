@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"unicode"
 )
@@ -127,57 +128,229 @@ func ChunkSentence(text string, docID string, filename string, sentencesPerChunk
 	return chunks
 }
 
+// sentenceSpan holds a sentence's text and its byte offsets in the original string.
+type sentenceSpan struct {
+	text  string
+	start int // byte offset in original (normalized) text
+	end   int // byte offset (exclusive)
+}
+
 // splitSentences splits text into individual sentences.
 // Boundaries are detected at '.', '!', '?' followed by whitespace or end of string,
 // and at '\n' line breaks.
 func splitSentences(text string) []string {
+	spans := splitSentenceSpans(text)
+	out := make([]string, len(spans))
+	for i, sp := range spans {
+		out[i] = sp.text
+	}
+	return out
+}
+
+// splitSentenceSpans splits text into sentences and tracks their byte positions.
+func splitSentenceSpans(text string) []sentenceSpan {
 	// Normalize line endings.
 	text = strings.ReplaceAll(text, "\r\n", "\n")
 
-	var sentences []string
+	var spans []sentenceSpan
 	var current strings.Builder
 
 	runes := []rune(text)
 	n := len(runes)
 
+	// Track byte offset of current sentence start.
+	bytePos := 0     // current byte position in normalized text
+	sentStart := 0    // byte offset where current sentence content starts
+	sentStartSet := false
+
 	for i := 0; i < n; i++ {
 		ch := runes[i]
+		charLen := len(string(ch))
 
 		if ch == '\n' {
-			// Newline always ends the current sentence.
 			s := strings.TrimSpace(current.String())
 			if s != "" {
-				sentences = append(sentences, s)
+				spans = append(spans, sentenceSpan{
+					text:  s,
+					start: sentStart,
+					end:   bytePos + charLen,
+				})
 			}
 			current.Reset()
+			sentStartSet = false
+			bytePos += charLen
 			continue
+		}
+
+		if !sentStartSet && !unicode.IsSpace(ch) {
+			sentStart = bytePos
+			sentStartSet = true
 		}
 
 		current.WriteRune(ch)
 
-		// Check for sentence-ending punctuation.
 		if ch == '.' || ch == '!' || ch == '?' {
-			// Look ahead: boundary if followed by whitespace, another sentence-ender, or end.
 			isEnd := i+1 >= n
 			isFollowedBySpace := i+1 < n && unicode.IsSpace(runes[i+1])
 
 			if isEnd || isFollowedBySpace {
 				s := strings.TrimSpace(current.String())
 				if s != "" {
-					sentences = append(sentences, s)
+					spans = append(spans, sentenceSpan{
+						text:  s,
+						start: sentStart,
+						end:   bytePos + charLen,
+					})
 				}
 				current.Reset()
+				sentStartSet = false
 			}
 		}
+
+		bytePos += charLen
 	}
 
-	// Flush any remaining text.
 	s := strings.TrimSpace(current.String())
 	if s != "" {
-		sentences = append(sentences, s)
+		spans = append(spans, sentenceSpan{
+			text:  s,
+			start: sentStart,
+			end:   bytePos,
+		})
 	}
 
-	return sentences
+	return spans
+}
+
+// ChunkSemantic splits text into semantically coherent chunks by detecting
+// topic boundaries via cosine similarity drops between consecutive sentence embeddings.
+//
+// Algorithm:
+//  1. Split text into sentences via splitSentences.
+//  2. Embed each sentence with GetEmbedding.
+//  3. Compute cosine similarity between every pair of adjacent sentence embeddings.
+//  4. A boundary is placed where similarity < (mean − 1.0 × stddev), meaning a
+//     significant topic shift. Minimum chunk size: 2 sentences. Maximum: 15 sentences
+//     (oversized chunks are split further).
+//  5. If fewer than 3 sentences exist, the entire text is returned as one chunk.
+func ChunkSemantic(text, docID, filename string) []Chunk {
+	// Normalize line endings consistently (splitSentenceSpans does it too, but
+	// we need the same normalized text for substring extraction).
+	normalizedText := strings.ReplaceAll(text, "\r\n", "\n")
+	spans := splitSentenceSpans(normalizedText)
+
+	if len(spans) < 3 {
+		if len(spans) == 0 {
+			return []Chunk{}
+		}
+		chunkID := fmt.Sprintf("%s_chunk_0", docID)
+		return []Chunk{{
+			ID:    chunkID,
+			DocID: docID,
+			Text:  strings.TrimSpace(normalizedText),
+			Index: 0,
+			Metadata: map[string]string{
+				"source":   filename,
+				"title":    filename,
+				"section":  "semantic_0",
+				"chunk_id": chunkID,
+			},
+		}}
+	}
+
+	// Embed all sentences.
+	embeddings := make([][]float64, 0, len(spans))
+	for _, sp := range spans {
+		emb, err := GetEmbedding(sp.text)
+		if err != nil {
+			chunkID := fmt.Sprintf("%s_chunk_0", docID)
+			return []Chunk{{
+				ID:    chunkID,
+				DocID: docID,
+				Text:  strings.TrimSpace(normalizedText),
+				Index: 0,
+				Metadata: map[string]string{
+					"source":   filename,
+					"title":    filename,
+					"section":  "semantic_0",
+					"chunk_id": chunkID,
+				},
+			}}
+		}
+		embeddings = append(embeddings, emb)
+	}
+
+	// Compute similarities between consecutive sentences.
+	sims := make([]float64, len(spans)-1)
+	for i := 0; i < len(spans)-1; i++ {
+		sims[i] = cosineSimilarity(embeddings[i], embeddings[i+1])
+	}
+
+	// Compute mean and stddev of similarities.
+	var sum float64
+	for _, s := range sims {
+		sum += s
+	}
+	mean := sum / float64(len(sims))
+
+	var variance float64
+	for _, s := range sims {
+		diff := s - mean
+		variance += diff * diff
+	}
+	stddev := math.Sqrt(variance / float64(len(sims)))
+	threshold := mean - 1.0*stddev
+
+	// Identify boundary indices (sentence index where a new chunk starts).
+	const maxSentences = 15
+	type spanGroup struct {
+		startIdx int // index in spans slice
+		endIdx   int // exclusive
+	}
+	var groups []spanGroup
+	start := 0
+
+	for i := 0; i < len(sims); i++ {
+		chunkLen := i - start + 1
+		nextChunkLen := i + 1 - start + 1
+
+		isBoundary := sims[i] < threshold
+		isOversize := nextChunkLen > maxSentences
+
+		if (isBoundary || isOversize) && chunkLen >= 2 {
+			groups = append(groups, spanGroup{startIdx: start, endIdx: i + 1})
+			start = i + 1
+		}
+	}
+	if start < len(spans) {
+		groups = append(groups, spanGroup{startIdx: start, endIdx: len(spans)})
+	}
+
+	// Build chunks by extracting original text between span boundaries.
+	var chunks []Chunk
+	for i, g := range groups {
+		byteStart := spans[g.startIdx].start
+		byteEnd := spans[g.endIdx-1].end
+		chunkText := strings.TrimSpace(normalizedText[byteStart:byteEnd])
+		if chunkText == "" {
+			continue
+		}
+
+		chunkID := fmt.Sprintf("%s_chunk_%d", docID, i)
+		chunks = append(chunks, Chunk{
+			ID:    chunkID,
+			DocID: docID,
+			Text:  chunkText,
+			Index: i,
+			Metadata: map[string]string{
+				"source":   filename,
+				"title":    filename,
+				"section":  fmt.Sprintf("semantic_%d", i),
+				"chunk_id": chunkID,
+			},
+		})
+	}
+	return chunks
 }
 
 // ChunkStructure dispatches to the appropriate structure-aware chunker
