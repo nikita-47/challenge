@@ -1,0 +1,365 @@
+package main
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+)
+
+// DocumentMeta holds metadata for an uploaded and indexed document.
+type DocumentMeta struct {
+	ID             string    `json:"id"`
+	Filename       string    `json:"filename"`
+	OriginalName   string    `json:"original_name"`
+	ContentType    string    `json:"content_type"`
+	Size           int64     `json:"size"`
+	UploadedAt     time.Time `json:"uploaded_at"`
+	ChunkCount     int       `json:"chunk_count"`
+	ChunkStrategy  string    `json:"chunk_strategy"`
+	IndexStatus    string    `json:"index_status"`
+	IndexError     string    `json:"index_error,omitempty"`
+	EmbeddingModel string    `json:"embedding_model"`
+}
+
+// DocumentStore manages documents with thread-safe access and JSON persistence.
+type DocumentStore struct {
+	mu        sync.RWMutex
+	docs      map[string]*DocumentMeta
+	metaPath  string
+	uploadDir string
+	indexDir  string
+	dirty     bool
+	saveTimer *time.Timer
+}
+
+// NewDocumentStore creates a new DocumentStore and ensures storage directories exist.
+func NewDocumentStore(metaPath, uploadDir, indexDir string) *DocumentStore {
+	_ = os.MkdirAll(filepath.Dir(metaPath), 0755)
+	_ = os.MkdirAll(uploadDir, 0755)
+	_ = os.MkdirAll(indexDir, 0755)
+	return &DocumentStore{
+		docs:      make(map[string]*DocumentMeta),
+		metaPath:  metaPath,
+		uploadDir: uploadDir,
+		indexDir:  indexDir,
+	}
+}
+
+// Load reads document metadata from the JSON file into memory.
+func (ds *DocumentStore) Load() error {
+	data, err := os.ReadFile(ds.metaPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	var docs []*DocumentMeta
+	if err := json.Unmarshal(data, &docs); err != nil {
+		return err
+	}
+
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	for _, d := range docs {
+		ds.docs[d.ID] = d
+	}
+	return nil
+}
+
+// Save writes all documents to the JSON file.
+func (ds *DocumentStore) Save() error {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	docs := make([]*DocumentMeta, 0, len(ds.docs))
+	for _, d := range ds.docs {
+		docs = append(docs, d)
+	}
+	sort.Slice(docs, func(i, j int) bool {
+		return docs[i].UploadedAt.Before(docs[j].UploadedAt)
+	})
+
+	data, err := json.MarshalIndent(docs, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	ds.dirty = false
+	return os.WriteFile(ds.metaPath, data, 0644)
+}
+
+// debouncedSave marks dirty and schedules a save after 2 seconds.
+// Must be called with the write lock held.
+func (ds *DocumentStore) debouncedSave() {
+	ds.dirty = true
+	if ds.saveTimer != nil {
+		ds.saveTimer.Stop()
+	}
+	ds.saveTimer = time.AfterFunc(2*time.Second, func() {
+		_ = ds.Save()
+	})
+}
+
+// Add inserts a document into the store and persists.
+func (ds *DocumentStore) Add(doc *DocumentMeta) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	ds.docs[doc.ID] = doc
+	ds.debouncedSave()
+}
+
+// Get retrieves a document by ID.
+func (ds *DocumentStore) Get(id string) *DocumentMeta {
+	ds.mu.RLock()
+	defer ds.mu.RUnlock()
+
+	return ds.docs[id]
+}
+
+// List returns all documents sorted by upload time (ascending).
+func (ds *DocumentStore) List() []*DocumentMeta {
+	ds.mu.RLock()
+	defer ds.mu.RUnlock()
+
+	docs := make([]*DocumentMeta, 0, len(ds.docs))
+	for _, d := range ds.docs {
+		docs = append(docs, d)
+	}
+	sort.Slice(docs, func(i, j int) bool {
+		return docs[i].UploadedAt.Before(docs[j].UploadedAt)
+	})
+	return docs
+}
+
+// Update replaces the stored document metadata and persists.
+func (ds *DocumentStore) Update(doc *DocumentMeta) {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	ds.docs[doc.ID] = doc
+	ds.debouncedSave()
+}
+
+// Delete removes a document by ID and persists. Returns error if not found.
+func (ds *DocumentStore) Delete(id string) error {
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
+
+	if _, ok := ds.docs[id]; !ok {
+		return fmt.Errorf("document not found: %s", id)
+	}
+
+	delete(ds.docs, id)
+	ds.debouncedSave()
+	return nil
+}
+
+// generateDocID returns a random 8-character hex string.
+func generateDocID() (string, error) {
+	b := make([]byte, 4)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// ─── HTTP handlers ────────────────────────────────────────────────────────────
+
+func handleListDocs(w http.ResponseWriter, r *http.Request, store *DocumentStore) {
+	docs := store.List()
+	if docs == nil {
+		docs = []*DocumentMeta{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(docs)
+}
+
+func handleUploadDoc(w http.ResponseWriter, r *http.Request, store *DocumentStore) {
+	if err := r.ParseMultipartForm(10 << 20); err != nil {
+		http.Error(w, "failed to parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file field: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	originalName := header.Filename
+	ext := strings.ToLower(filepath.Ext(originalName))
+	if ext != ".txt" && ext != ".md" && ext != ".pdf" {
+		http.Error(w, "unsupported file type: only .txt, .md, .pdf are allowed", http.StatusBadRequest)
+		return
+	}
+
+	id, err := generateDocID()
+	if err != nil {
+		http.Error(w, "failed to generate ID: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	storedFilename := id + "_" + originalName
+	destPath := filepath.Join(store.uploadDir, storedFilename)
+
+	destFile, err := os.Create(destPath)
+	if err != nil {
+		http.Error(w, "failed to save file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer destFile.Close()
+
+	size, err := io.Copy(destFile, file)
+	if err != nil {
+		http.Error(w, "failed to write file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	contentType := "text/plain"
+	switch ext {
+	case ".md":
+		contentType = "text/markdown"
+	case ".pdf":
+		contentType = "application/pdf"
+	}
+
+	doc := &DocumentMeta{
+		ID:             id,
+		Filename:       storedFilename,
+		OriginalName:   originalName,
+		ContentType:    contentType,
+		Size:           size,
+		UploadedAt:     time.Now(),
+		ChunkStrategy:  "all",
+		IndexStatus:    "pending",
+		EmbeddingModel: "nomic-embed-text",
+	}
+	store.Add(doc)
+
+	go runIndexPipeline(store, doc, destPath)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(doc)
+}
+
+func handleGetDoc(w http.ResponseWriter, r *http.Request, store *DocumentStore, id string) {
+	doc := store.Get(id)
+	if doc == nil {
+		http.Error(w, "document not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(doc)
+}
+
+func handleDeleteDoc(w http.ResponseWriter, r *http.Request, store *DocumentStore, id string) {
+	doc := store.Get(id)
+	if doc == nil {
+		http.Error(w, "document not found", http.StatusNotFound)
+		return
+	}
+
+	if doc.IndexStatus == "indexing" {
+		http.Error(w, "cannot delete document while indexing is in progress", http.StatusConflict)
+		return
+	}
+
+	// Delete upload file.
+	uploadPath := filepath.Join(store.uploadDir, doc.Filename)
+	if err := os.Remove(uploadPath); err != nil && !os.IsNotExist(err) {
+		http.Error(w, "failed to delete upload file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Delete index file if it exists.
+	indexPath := filepath.Join(store.indexDir, id+".json")
+	if err := os.Remove(indexPath); err != nil && !os.IsNotExist(err) {
+		http.Error(w, "failed to delete index file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := store.Delete(id); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func handleGetChunks(w http.ResponseWriter, r *http.Request, store *DocumentStore, id string) {
+	doc := store.Get(id)
+	if doc == nil {
+		http.Error(w, "document not found", http.StatusNotFound)
+		return
+	}
+
+	indexPath := filepath.Join(store.indexDir, id+".json")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			http.Error(w, "index not found (document may still be indexing)", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "failed to read index: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
+// handleDocsSubroute returns an http.HandlerFunc that dispatches /api/docs/{id}[/action] routes.
+func handleDocsSubroute(store *DocumentStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/api/docs/")
+		if path == "" {
+			http.Error(w, "document ID required", http.StatusBadRequest)
+			return
+		}
+
+		// Split into id and optional action.
+		parts := strings.SplitN(path, "/", 2)
+		id := parts[0]
+		action := ""
+		if len(parts) == 2 {
+			action = parts[1]
+		}
+
+		switch action {
+		case "chunks":
+			if r.Method != http.MethodGet {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			handleGetChunks(w, r, store, id)
+
+		case "":
+			switch r.Method {
+			case http.MethodGet:
+				handleGetDoc(w, r, store, id)
+			case http.MethodDelete:
+				handleDeleteDoc(w, r, store, id)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}
+}

@@ -18,3 +18,4 @@ mcp-servers/pipeline/pipeline_output/
 /scheduler
 notebook.txt
 .mcp_servers.json
+.documents/

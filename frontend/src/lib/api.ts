@@ -1,4 +1,4 @@
-import type { MCPServerStatus, MCPToolInfo } from '@/lib/types'
+import type { MCPServerStatus, MCPToolInfo, DocumentMeta, ChunkIndex } from '@/lib/types'
 
 export interface SessionInfo {
   name: string
@@ -326,6 +326,51 @@ export async function reloadMCPConfig() {
   }
   return resp.json()
 }
+
+// ─── Documents API ───────────────────────────────────────────────────────
+
+export async function fetchDocs(): Promise<DocumentMeta[]> {
+  const resp = await fetch('/api/docs')
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch documents: ${resp.statusText}`)
+  }
+  const data = await resp.json()
+  return data ?? []
+}
+
+export async function uploadDoc(file: File): Promise<DocumentMeta> {
+  const form = new FormData()
+  form.append('file', file)
+  const resp = await fetch('/api/docs/upload', { method: 'POST', body: form })
+  if (!resp.ok) {
+    throw new Error(`Failed to upload document: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function fetchDoc(id: string): Promise<DocumentMeta> {
+  const resp = await fetch(`/api/docs/${encodeURIComponent(id)}`)
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch document: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
+export async function deleteDoc(id: string): Promise<void> {
+  const resp = await fetch(`/api/docs/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  if (!resp.ok) {
+    throw new Error(`Failed to delete document: ${resp.statusText}`)
+  }
+}
+
+export async function fetchDocChunks(id: string): Promise<ChunkIndex> {
+  const resp = await fetch(`/api/docs/${encodeURIComponent(id)}/chunks`)
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch chunk index: ${resp.statusText}`)
+  }
+  return resp.json()
+}
+
 
 export async function callMCPTool(server: string, tool: string, args: Record<string, unknown>): Promise<string> {
   const resp = await fetch('/api/mcp/tools/call', {

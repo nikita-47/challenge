@@ -20,6 +20,7 @@
 - `mcp-servers/pipeline/` — MCP-сервер pipeline (7 tools: search, summarize, save, run, status, list, delete). HN Algolia → Claude Haiku → file save. Async execution в горутинах
 - `.mcp_servers.json` — конфиг MCP-серверов (не коммитится), формат Claude Desktop
 - `.mcp_servers.example.json` — пример конфига MCP
+- `.documents/` — загруженные документы: `uploads/` (файлы), `index/` (CombinedIndex JSON), `meta.json` (не коммитится)
 
 ## Правила
 
@@ -42,6 +43,7 @@
 - **MCP сервер (Pipeline)**: `mcp-servers/pipeline/` — 3 файла (main.go, store.go, runner.go), stdio транспорт. 7 tools: `pipe_search`, `pipe_summarize`, `pipe_save`, `pipe_run`, `pipe_status`, `pipe_list`, `pipe_delete`. 3 шага: search (HN Algolia) → summarize (Claude Haiku) → save (файл). Async execution в горутинах. `pipe_delete` запрещает удаление running runs. Сборка: `go build -o mcp-servers/pipeline/pipeline ./mcp-servers/pipeline/`. `dev.sh` собирает автоматически.
 - **Pipeline UI**: Полноэкранный layout `PipelineView.vue` вместо sidebar таба. `activeView` в ui store переключает между chat и pipeline view. Layout: header (query + run + back), left column (runs list + delete), center (horizontal flow diagram + output panel). `usePipelineStore` — MCP tool calls, polling, delete.
 - **Scheduler → Pipeline мост**: Тип задачи `pipeline` в scheduler. `runPipeline()` — one-shot Timer → HTTP POST на backend `/api/mcp/tools/call` с `pipe_run`. Позволяет отложенный запуск pipeline из чата через агента.
+- **RAG Document Indexing**: `backend/docs.go` — `DocumentStore` + REST `/api/docs/*` (upload, list, get, delete, chunks). `runIndexPipeline()` всегда запускает все 3 стратегии (`ChunkSize`, `ChunkSentence`, `ChunkStructure`), сохраняет `CombinedIndex { size, sentence, structure }` + embeddings через Ollama (`nomic-embed-text`). `backend/pdf.go` — `ExtractPDFText()` с `recover()` panic guard. Frontend: `DocsView.vue` (полноэкранный, как PipelineView) + `useDocsStore` (polling каждые 2s). `activeView` расширен до `'chat' | 'pipeline' | 'docs'`.
 - **Динамические фазы**: вместо хардкоженного pipeline (planning→executing→validating→done) задача начинается с `PhaseProposing` — агент анализирует goal и предлагает кастомный pipeline через `submit_phases`. Пользователь может одобрить (approve) или отправить feedback для корректировки. `PhaseSpec` (Name/Type/Description/Status) маппится на существующих агентов по Type: `planning`→`newPlanningAgent`, `executing`→`newExecutingAgent`, `validating`→`newValidatingAgent`. Constraints: planning before executing, must end with validating, 2-5 phases. `validatePhases()` проверяет перед принятием.
 
 ## Рабочий процесс

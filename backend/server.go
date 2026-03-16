@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -185,6 +186,32 @@ func startServer(apiKey string, cfg config) {
 	mux.HandleFunc("/api/mcp/reload", func(w http.ResponseWriter, r *http.Request) {
 		handleMCPReload(w, r, mcpMgr)
 	})
+
+	// ─── Document endpoints ───────────────────────────────────────────────────
+	docStore := NewDocumentStore(
+		".documents/meta.json",
+		".documents/uploads",
+		".documents/index",
+	)
+	if err := docStore.Load(); err != nil {
+		log.Printf("doc store load: %v", err)
+	}
+
+	mux.HandleFunc("/api/docs/upload", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handleUploadDoc(w, r, docStore)
+	})
+	mux.HandleFunc("/api/docs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handleListDocs(w, r, docStore)
+	})
+	mux.HandleFunc("/api/docs/", handleDocsSubroute(docStore))
 
 	// Static files — serve frontend/dist/ if it exists.
 	distDir := "frontend/dist"

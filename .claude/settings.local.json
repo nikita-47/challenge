@@ -8,7 +8,8 @@
       "Bash(go get:*)",
       "Bash(sleep *:*)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(lsof -i :6274 -i :6277 -t 2>/dev/null | xargs kill 2>/dev/null; echo \"MCP Inspector stopped\")"
+      "Bash(lsof -i :6274 -i :6277 -t 2>/dev/null | xargs kill 2>/dev/null; echo \"MCP Inspector stopped\")",
+      "Bash(cat:*)"
     ]
   }
 }

@@ -7,14 +7,14 @@ export const useUIStore = defineStore('ui', () => {
   const rightSidebarOpen = ref(false)
   const config = ref<AppConfig | null>(null)
   const newChatDialogOpen = ref(false)
-  const activeView = ref<'chat' | 'pipeline'>('chat')
+  const activeView = ref<'chat' | 'pipeline' | 'docs'>('chat')
   const providerSettings = ref<ProviderSettings>({
     provider: 'local',
     localURL: 'http://localhost:1234',
     localModel: 'qwen2.5-0.5b-instruct-mlx',
   })
 
-  function setView(view: 'chat' | 'pipeline') {
+  function setView(view: 'chat' | 'pipeline' | 'docs') {
     activeView.value = view
   }
 

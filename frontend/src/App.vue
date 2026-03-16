@@ -9,6 +9,7 @@ import TokenBar from '@/components/TokenBar.vue'
 import BranchSelector from '@/components/BranchSelector.vue'
 import TaskStatePanel from '@/components/TaskStatePanel.vue'
 import PipelineView from '@/components/PipelineView.vue'
+import DocsView from '@/components/DocsView.vue'
 import { Button } from '@/components/ui/button'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
@@ -30,11 +31,14 @@ onMounted(() => {
 </script>
 
 <template>
+  <!-- Docs full-screen view -->
+  <DocsView v-if="ui.activeView === 'docs'" />
+
   <!-- Pipeline full-screen view -->
-  <PipelineView v-if="ui.activeView === 'pipeline'" />
+  <PipelineView v-else-if="ui.activeView === 'pipeline'" />
 
   <!-- Chat view -->
-  <div v-else class="flex h-screen w-screen overflow-hidden bg-background">
+  <div v-else-if="ui.activeView === 'chat'" class="flex h-screen w-screen overflow-hidden bg-background">
     <!-- Left sidebar -->
     <SessionPanel
       v-if="ui.leftSidebarOpen"

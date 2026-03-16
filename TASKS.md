@@ -443,6 +443,26 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 21 — Document Indexing (RAG) ✅
+
+**Assignment:** Build a RAG document indexing system: upload .txt/.md/.pdf files, run a chunking → embeddings pipeline, store a JSON index, compare chunking strategies side-by-side.
+
+**What was built on top of previous day:**
+- `backend/docs.go` — `DocumentStore` (RWMutex + debounced JSON save) + HTTP handlers for `/api/docs/*`. Upload saves file, launches goroutine, returns `DocumentMeta`. Delete blocks if indexing in progress.
+- `backend/chunker.go` — 3 strategies: `ChunkSize` (sliding window, rune-level), `ChunkSentence` (sentence boundaries via `.`/`!`/`?`/`\n`), `ChunkStructure` (markdown headings / PDF pages / txt paragraphs)
+- `backend/embeddings.go` — Ollama REST client (`POST /api/embeddings`, model: `nomic-embed-text`, 30s timeout)
+- `backend/indexer.go` — `runIndexPipeline()` runs all 3 strategies unconditionally, embeds all chunks, saves `CombinedIndex { size, sentence, structure }` to `.documents/index/{id}.json`. `chunk_count` = sum of all 3.
+- `backend/pdf.go` — `ExtractPDFText()` via `ledongthuc/pdf` with `defer recover()` panic guard
+- `frontend/src/components/DocsView.vue` — full-screen view: header (choose file + upload), left column (doc list with status badges + hover-delete), center (meta bar + 3-column strategy comparison)
+- `frontend/src/stores/docs.ts` — Pinia store: `upload()`, `selectDoc()`, `removeDoc()`, polling via `setInterval` every 2s
+- `frontend/src/stores/ui.ts` — `activeView` extended to `'chat' | 'pipeline' | 'docs'`
+- `frontend/src/components/SessionPanel.vue` — "▸ documents" button added alongside pipeline
+- `go.mod` — added `github.com/ledongthuc/pdf`
+
+**Key code:** `DocumentStore`, `runIndexPipeline()`, `CombinedIndex`, `ChunkSize()`, `ChunkSentence()`, `ChunkStructure()`, `GetEmbeddings()`, `DocsView.vue`, `useDocsStore`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

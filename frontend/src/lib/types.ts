@@ -215,6 +215,42 @@ export interface PipelineRun {
   created_at: string
 }
 
+// ─── Document Indexing Types ─────────────────────────────────────────────
+export type IndexStatus = 'pending' | 'indexing' | 'ready' | 'error'
+export type ChunkStrategy = 'structure' | 'sentence' | 'size'
+
+export interface DocumentMeta {
+  id: string
+  filename: string
+  original_name: string
+  content_type: string
+  size: number
+  uploaded_at: string
+  chunk_count: number
+  chunk_strategy: ChunkStrategy
+  index_status: IndexStatus
+  index_error?: string
+  embedding_model: string
+}
+
+export interface DocumentChunk {
+  id: string
+  doc_id: string
+  text: string
+  index: number
+  metadata: Record<string, string>
+}
+
+export interface ChunkIndex {
+  doc_id: string
+  filename: string
+  embedding_model: string
+  created_at: string
+  size: DocumentChunk[]
+  sentence: DocumentChunk[]
+  structure: DocumentChunk[]
+}
+
 // ─── MCP Types ──────────────────────────────────────────────────────────────
 export interface MCPServerStatus {
   name: string
