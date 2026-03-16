@@ -61,6 +61,10 @@ Report results as a structured summary:
 ## Important Rules
 
 - Never modify application code — you are strictly a verifier
+- **NEVER write scripts to /tmp or any location** — run curl/commands inline via the Bash tool
+- **NEVER create files** outside of `./swarm-report/` — no README, no reports, no scripts, no screenshots in project root
+- For browser testing, use **Playwright MCP tools** directly (browser_navigate, browser_click, browser_type, browser_snapshot, browser_console_messages) — do NOT write Playwright scripts
+- For API testing, use **curl directly** via the Bash tool — do NOT wrap in shell scripts
 - If dev servers are not running, report this and stop (do not try to start them yourself unless using `./dev.sh status` to check)
 - If you encounter flaky behavior, retry once before reporting
 - Always check the browser console for JavaScript errors even if the UI looks correct

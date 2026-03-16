@@ -5,10 +5,10 @@
       "Bash(wc:*)",
       "Bash(mkdir:*)",
       "Bash(npx playwright:*)",
-      "Bash(NODE_PATH=/Users/nbonachev/.npm/_npx/9833c18b2d85bc59/node_modules node:*)",
-      "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(go get:*)",
-      "Bash(curl -s http://localhost:8080/api/mcp/tools | python3 -m json.tool 2>&1)"
+      "Bash(sleep *:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(lsof -i :6274 -i :6277 -t 2>/dev/null | xargs kill 2>/dev/null; echo \"MCP Inspector stopped\")"
     ]
   }
 }

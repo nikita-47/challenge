@@ -108,6 +108,29 @@ start_go_test() {
     echo "Go server starting on port $GO_PORT (base-url: localhost:$LMS_PORT, model: $LMS_MODEL)"
 }
 
+inspect_mcp() {
+    local server="${1:-}"
+    if [ -z "$server" ]; then
+        echo "Available MCP servers:"
+        for dir in mcp-servers/*/; do
+            local name=$(basename "$dir")
+            echo "  - $name"
+        done
+        echo ""
+        echo "Usage: ./dev.sh inspect <server>"
+        return 1
+    fi
+
+    local binary="mcp-servers/$server/$server"
+    if [ ! -f "$binary" ]; then
+        echo "Binary not found, building $server..."
+        go build -o "$binary" "./mcp-servers/$server/"
+    fi
+
+    echo "Starting MCP Inspector for $server..."
+    npx @modelcontextprotocol/inspector "$binary"
+}
+
 stop_playwright() {
     local pids
     pids=$(pgrep -f "@playwright/mcp" 2>/dev/null)
@@ -164,6 +187,7 @@ case "${1:-}" in
     start-vite)   start_vite ;;
     stop-vite)    stop_vite ;;
     stop-playwright) stop_playwright ;;
+    inspect)          inspect_mcp "$2" ;;
     start)        start_go; start_vite ;;
     start-lms)    start_lms ;;
     stop-lms)     stop_lms ;;
@@ -172,7 +196,7 @@ case "${1:-}" in
     stop)         stop_go; stop_vite; stop_playwright ;;
     status)       status ;;
     *)
-        echo "Usage: ./dev.sh {start|stop|status|start-go|stop-go|restart-go|start-vite|stop-vite|stop-playwright|start-lms|stop-lms|start-test|stop-test}"
+        echo "Usage: ./dev.sh {start|stop|status|start-go|stop-go|restart-go|start-vite|stop-vite|stop-playwright|start-lms|stop-lms|start-test|stop-test|inspect <server>}"
         exit 1
         ;;
 esac
