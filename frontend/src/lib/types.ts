@@ -71,6 +71,19 @@ export interface SystemEvent {
   tokensSaved?: number
 }
 
+export interface RAGSearchResult {
+  chunk: {
+    id: string
+    doc_id: string
+    text: string
+    index: number
+    metadata: Record<string, string>
+  }
+  score: number
+  strategy: string
+  doc_name: string
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -78,6 +91,7 @@ export interface ChatMessage {
   isStreaming?: boolean
   event?: SystemEvent
   apiRequest?: string
+  ragContext?: RAGSearchResult[]
 }
 
 export interface ToolCall {
@@ -176,6 +190,11 @@ export interface StepResultEvent {
   text: string
 }
 
+export interface RAGContextEvent {
+  type: 'rag_context'
+  results: RAGSearchResult[]
+}
+
 export type SSEEvent =
   | TextDeltaEvent
   | UsageEvent
@@ -190,6 +209,7 @@ export type SSEEvent =
   | ApiRequestEvent
   | TaskStateEvent
   | StepResultEvent
+  | RAGContextEvent
   | { type: 'memory_updated' }
   | { type: 'text'; Text: string }
 

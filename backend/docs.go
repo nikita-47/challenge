@@ -358,6 +358,80 @@ func handleGetChunks(w http.ResponseWriter, r *http.Request, store *DocumentStor
 	json.NewEncoder(w).Encode(resp)
 }
 
+// loadCombinedIndex reads and parses the CombinedIndex JSON for a given document ID.
+func loadCombinedIndex(indexDir, docID string) (*CombinedIndex, error) {
+	indexPath := filepath.Join(indexDir, docID+".json")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("index not found for document %s", docID)
+		}
+		return nil, fmt.Errorf("failed to read index: %w", err)
+	}
+
+	var idx CombinedIndex
+	if err := json.Unmarshal(data, &idx); err != nil {
+		return nil, fmt.Errorf("failed to parse index: %w", err)
+	}
+
+	return &idx, nil
+}
+
+func handleSearchDoc(w http.ResponseWriter, r *http.Request, store *DocumentStore, id string) {
+	doc := store.Get(id)
+	if doc == nil {
+		http.Error(w, "document not found", http.StatusNotFound)
+		return
+	}
+
+	if doc.IndexStatus != "ready" {
+		http.Error(w, "document index is not ready", http.StatusConflict)
+		return
+	}
+
+	var body struct {
+		Query    string `json:"query"`
+		TopK     int    `json:"top_k"`
+		Strategy string `json:"strategy"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if body.Query == "" {
+		http.Error(w, "query is required", http.StatusBadRequest)
+		return
+	}
+
+	if body.TopK <= 0 {
+		body.TopK = 5
+	}
+
+	if body.Strategy == "" {
+		body.Strategy = "auto"
+	}
+
+	idx, err := loadCombinedIndex(store.indexDir, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	embedding, err := GetEmbedding(body.Query)
+	if err != nil {
+		http.Error(w, "failed to get query embedding: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	results := SearchChunks(idx, embedding, body.TopK, body.Strategy)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"results": results,
+	})
+}
+
 // handleDocsSubroute returns an http.HandlerFunc that dispatches /api/docs/{id}[/action] routes.
 func handleDocsSubroute(store *DocumentStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -382,6 +456,13 @@ func handleDocsSubroute(store *DocumentStore) http.HandlerFunc {
 				return
 			}
 			handleGetChunks(w, r, store, id)
+
+		case "search":
+			if r.Method != http.MethodPost {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			}
+			handleSearchDoc(w, r, store, id)
 
 		case "":
 			switch r.Method {

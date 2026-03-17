@@ -14,7 +14,7 @@ const modelPricing: Record<string, { costIn: number; costOut: number }> = {
 export const useChatStore = defineStore('chat', () => {
   const messages = ref<ChatMessage[]>([])
   const isStreaming = ref(false)
-  const currentSession = ref('default')
+  const currentSession = ref(`chat-${Date.now()}`)
   const usage = ref<TokenUsage>({ input: 0, output: 0 })
   const totalUsage = ref<TokenUsage>({ input: 0, output: 0 })
   const exchanges = ref(0)
@@ -29,6 +29,7 @@ export const useChatStore = defineStore('chat', () => {
   const taskState = ref<TaskState | null>(null)
   const activeEnabledTools = ref<string[]>([])
   const activeMcpTools = ref<string[]>([])
+  const activeRagDocIds = ref<string[]>([])
 
   let abortController: AbortController | null = null
 
@@ -57,6 +58,7 @@ export const useChatStore = defineStore('chat', () => {
     taskState.value = null
     activeEnabledTools.value = []
     activeMcpTools.value = []
+    activeRagDocIds.value = []
   }
 
   const tokensSaved = ref(0)
@@ -109,6 +111,11 @@ export const useChatStore = defineStore('chat', () => {
       }),
       ...(activeMcpTools.value.length > 0 && {
         mcpTools: activeMcpTools.value,
+      }),
+      ...(activeRagDocIds.value.length > 0 && {
+        ragDocIds: activeRagDocIds.value,
+        ragStrategy: 'auto',
+        ragTopK: 5,
       }),
       ...(settings.value && {
         model: settings.value.model,
@@ -219,6 +226,18 @@ export const useChatStore = defineStore('chat', () => {
             }
             break
 
+          case 'rag_context': {
+            // Find the last assistant message and attach RAG context
+            for (let i = messages.value.length - 1; i >= 0; i--) {
+              const m = messages.value[i]
+              if (m && m.role === 'assistant') {
+                m.ragContext = event.results
+                break
+              }
+            }
+            break
+          }
+
           case 'memory_updated':
             break
 
@@ -312,6 +331,7 @@ export const useChatStore = defineStore('chat', () => {
     taskState,
     activeEnabledTools,
     activeMcpTools,
+    activeRagDocIds,
     startTask,
     continueTask,
     cancelTask,

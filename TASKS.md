@@ -478,6 +478,24 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
+## Day 23 — First RAG Query ✅
+
+**Assignment:** Add RAG querying to chat — user selects a document, asks a question, system retrieves relevant chunks via embedding similarity, injects them into the prompt. Two modes: with RAG / without RAG.
+
+**What was built on top of previous day:**
+- `backend/similarity.go` — `SearchChunks()` with auto-strategy (searches all 4 strategies, returns best top-K across all), `SearchResult` struct
+- `backend/docs.go` — `POST /api/docs/{id}/search` endpoint, `loadCombinedIndex()` extracted as reusable function, `handleSearchDoc()` handler
+- `backend/server.go` — `chatRequest` extended with `RagDocIDs`, `RagStrategy`, `RagTopK`. RAG pipeline in `handleChat`: embed query → load index per doc → cross-doc top-K → XML context inject → SSE `rag_context` event. `docStore` passed to `handleChat`
+- `frontend/src/lib/types.ts` — `RAGSearchResult`, `RAGContextEvent`, `ragContext` field on `ChatMessage`
+- `frontend/src/stores/chat.ts` — `activeRagDocIds` ref, RAG params in request body, `rag_context` SSE handler
+- `frontend/src/components/SendSettingsPopover.vue` — "Documents" section with checkboxes for ready docs, emerald highlight on gear icon
+- `frontend/src/components/MessageBubble.vue` — collapsible RAG context block above assistant response (chunks with scores and text preview)
+- Removed "default" session fallback — new sessions auto-generate `chat-{timestamp}`
+
+**Key code:** `SearchChunks()`, `SearchResult`, `loadCombinedIndex()`, `handleSearchDoc()`, `activeRagDocIds`, `RAGSearchResult`, `RAGContextEvent`
+
+---
+
 ## Day N — Template
 
 **Assignment:** _paste the assignment here_

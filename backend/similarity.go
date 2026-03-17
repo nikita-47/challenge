@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"sort"
 	"time"
 )
 
@@ -108,6 +109,67 @@ func buildStrategyResult(chunks []IndexedChunk) StrategyResult {
 	result.MaxSimilarity = maxSim
 
 	return result
+}
+
+// SearchResult holds a single chunk retrieved by semantic search, with its relevance score.
+type SearchResult struct {
+	Chunk    Chunk   `json:"chunk"`
+	Score    float64 `json:"score"`
+	Strategy string  `json:"strategy"`
+}
+
+// SearchChunks finds the top-K most relevant chunks from a CombinedIndex
+// by comparing each chunk embedding against the query embedding using cosine similarity.
+// strategy selects which chunking strategy to search: "semantic", "sentence", "structure", "size",
+// or "auto" (default) which searches all strategies and returns the best results across all.
+func SearchChunks(idx *CombinedIndex, queryEmbedding []float64, topK int, strategy string) []SearchResult {
+	type strategySlice struct {
+		name   string
+		chunks []IndexedChunk
+	}
+
+	var groups []strategySlice
+
+	switch strategy {
+	case "sentence":
+		groups = []strategySlice{{"sentence", idx.Sentence}}
+	case "structure":
+		groups = []strategySlice{{"structure", idx.Structure}}
+	case "size":
+		groups = []strategySlice{{"size", idx.Size}}
+	case "semantic":
+		groups = []strategySlice{{"semantic", idx.Semantic}}
+	default:
+		// "auto" or empty — search all strategies
+		groups = []strategySlice{
+			{"sentence", idx.Sentence},
+			{"structure", idx.Structure},
+			{"size", idx.Size},
+			{"semantic", idx.Semantic},
+		}
+	}
+
+	var results []SearchResult
+	for _, g := range groups {
+		for _, ic := range g.chunks {
+			score := cosineSimilarity(queryEmbedding, ic.Embedding)
+			results = append(results, SearchResult{
+				Chunk:    ic.Chunk,
+				Score:    score,
+				Strategy: g.name,
+			})
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Score > results[j].Score
+	})
+
+	if topK > 0 && topK < len(results) {
+		results = results[:topK]
+	}
+
+	return results
 }
 
 // buildChunkResponse transforms a CombinedIndex into a ChunkResponse,

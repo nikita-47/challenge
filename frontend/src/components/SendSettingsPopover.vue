@@ -4,6 +4,8 @@ import { onClickOutside } from '@vueuse/core'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
 import { useMCPStore } from '@/stores/mcp'
+import { useDocsStore } from '@/stores/docs'
+import { useChatStore } from '@/stores/chat'
 
 const props = defineProps<{
   taskMode: boolean
@@ -20,6 +22,11 @@ const emit = defineEmits<{
 }>()
 
 const mcp = useMCPStore()
+const docs = useDocsStore()
+const chat = useChatStore()
+
+const readyDocuments = computed(() => docs.documents.filter((d) => d.index_status === 'ready'))
+
 const connectedServers = computed(() => {
   const grouped: { name: string; tools: typeof mcp.tools.value }[] = []
   for (const srv of mcp.servers) {
@@ -44,9 +51,25 @@ onClickOutside(popoverRef, () => {
 
 function togglePopover() {
   isOpen.value = !isOpen.value
-  if (isOpen.value && mcp.servers.length === 0) {
-    mcp.loadServers()
-    mcp.loadTools()
+  if (isOpen.value) {
+    if (mcp.servers.length === 0) {
+      mcp.loadServers()
+      mcp.loadTools()
+    }
+    docs.loadList()
+  }
+}
+
+function toggleRagDoc(docId: string, checked: boolean) {
+  if (checked) {
+    if (!chat.activeRagDocIds.includes(docId)) {
+      chat.activeRagDocIds.push(docId)
+    }
+  } else {
+    const idx = chat.activeRagDocIds.indexOf(docId)
+    if (idx !== -1) {
+      chat.activeRagDocIds.splice(idx, 1)
+    }
   }
 }
 
@@ -127,7 +150,9 @@ function removeInvariant(index: number) {
         ? 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40'
         : mcpTools.length > 0
           ? 'bg-violet-500/20 text-violet-400 border-violet-500/40'
-          : 'text-muted-foreground border-transparent hover:text-foreground hover:border-border'"
+          : chat.activeRagDocIds.length > 0
+            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+            : 'text-muted-foreground border-transparent hover:text-foreground hover:border-border'"
       title="Send settings"
       @click="togglePopover"
     >
@@ -266,6 +291,32 @@ function removeInvariant(index: number) {
           </div>
         </div>
       </template>
+
+      <Separator />
+      <p class="text-xs text-muted-foreground font-medium">Documents</p>
+      <template v-if="readyDocuments.length > 0">
+        <div
+          v-for="doc in readyDocuments"
+          :key="doc.id"
+          class="flex items-center gap-2"
+        >
+          <Checkbox
+            :id="`rag-doc-${doc.id}`"
+            :checked="chat.activeRagDocIds.includes(doc.id)"
+            @update:checked="(v) => toggleRagDoc(doc.id, v)"
+          />
+          <label
+            :for="`rag-doc-${doc.id}`"
+            class="text-xs text-foreground/80 cursor-pointer select-none truncate"
+            :title="doc.original_name"
+          >
+            {{ doc.original_name }}
+          </label>
+        </div>
+      </template>
+      <p v-else class="text-xs text-muted-foreground/60">
+        no indexed documents
+      </p>
     </div>
   </div>
 </template>

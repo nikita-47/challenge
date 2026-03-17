@@ -85,7 +85,7 @@ export const useSessionsStore = defineStore('sessions', () => {
       const chat = useChatStore()
       if (chat.currentSession === name) {
         chat.clearMessages()
-        chat.currentSession = 'default'
+        chat.currentSession = `chat-${Date.now()}`
       }
     } catch (e) {
       console.error('Failed to delete session:', e)
