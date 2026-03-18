@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { onClickOutside } from '@vueuse/core'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
+import { Slider } from '@/components/ui/slider'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useMCPStore } from '@/stores/mcp'
 import { useDocsStore } from '@/stores/docs'
 import { useChatStore } from '@/stores/chat'
@@ -26,6 +28,14 @@ const docs = useDocsStore()
 const chat = useChatStore()
 
 const readyDocuments = computed(() => docs.documents.filter((d) => d.index_status === 'ready'))
+
+// Slider requires array ref — computed getter/setter bridges scalar store value
+const ragThresholdArray = computed({
+  get: () => [chat.ragThreshold],
+  set: (v: number[]) => {
+    chat.ragThreshold = v[0] ?? 0
+  },
+})
 
 const connectedServers = computed(() => {
   const grouped: { name: string; tools: typeof mcp.tools.value }[] = []
@@ -317,6 +327,66 @@ function removeInvariant(index: number) {
       <p v-else class="text-xs text-muted-foreground/60">
         no indexed documents
       </p>
+
+      <template v-if="chat.activeRagDocIds.length > 0">
+        <Separator />
+        <p class="text-xs text-muted-foreground font-medium">RAG Settings</p>
+
+        <!-- Threshold slider -->
+        <div class="flex flex-col gap-1">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-foreground/80">Threshold: {{ chat.ragThreshold.toFixed(2) }}</span>
+            <span class="text-[10px] text-muted-foreground/60">0 = no filtering</span>
+          </div>
+          <Slider
+            v-model="ragThresholdArray"
+            :min="0"
+            :max="1"
+            :step="0.05"
+          />
+        </div>
+
+        <!-- Top-K input -->
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs text-foreground/80 shrink-0">Top K:</span>
+          <input
+            v-model.number="chat.ragTopK"
+            type="number"
+            min="1"
+            max="20"
+            class="w-16 text-xs px-2 py-0.5 bg-background border border-border text-foreground text-right focus:outline-none focus:border-primary/40 appearance-none [&::-webkit-inner-spin-button]:hidden [&::-webkit-outer-spin-button]:hidden"
+          />
+        </div>
+
+        <!-- Query rewrite checkbox -->
+        <div class="flex items-center gap-2">
+          <Checkbox
+            id="rag-query-rewrite"
+            :checked="chat.ragQueryRewrite"
+            @update:checked="(v) => { chat.ragQueryRewrite = v }"
+          />
+          <label for="rag-query-rewrite" class="text-xs text-foreground/80 cursor-pointer select-none">
+            Rewrite query (Haiku)
+          </label>
+        </div>
+
+        <!-- Strategy select -->
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-foreground/80 shrink-0">Strategy:</span>
+          <Select :model-value="chat.ragStrategy" @update:model-value="(v) => { chat.ragStrategy = v }">
+            <SelectTrigger class="h-6 text-xs flex-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">auto</SelectItem>
+              <SelectItem value="semantic">semantic</SelectItem>
+              <SelectItem value="sentence">sentence</SelectItem>
+              <SelectItem value="structure">structure</SelectItem>
+              <SelectItem value="size">size</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </template>
     </div>
   </div>
 </template>

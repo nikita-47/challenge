@@ -496,11 +496,18 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 
 ---
 
-## Day N — Template
+## Day 24 — RAG Reranking, Filtering & Pipeline Visibility ✅
 
-**Assignment:** _paste the assignment here_
+**Assignment:** Add a second stage after search: reranker or relevance filter (similarity threshold). Configure cutoff threshold and top-K before/after filtering. Compare quality with and without filter. Show the pipeline visually in UI.
 
 **What was built on top of previous day:**
-- ...
+- `backend/rag.go` (new) — `rewriteQuery()` (Haiku rewrites query for semantic search), `filterResults()` (splits by threshold into passed/rejected), `performRAGSearch()` (full pipeline orchestrator with SSE `rag_step` events at each stage: rewrite → embed → search → filter → inject)
+- `backend/server.go` — `chatRequest` extended with `RagThreshold float64` and `RagQueryRewrite bool`; inline RAG block replaced by `performRAGSearch()` call; `ragResultWithDoc` promoted to package-level type
+- `frontend/src/components/RAGPipelineSteps.vue` (new) — thinking-steps collapsible block in message flow: per-step icon (✓/↻/→/✗), color (emerald/amber/zinc/red), and contextual detail (rewritten query, chunk count, passed/rejected counts)
+- `frontend/src/components/RAGChunkSplitView.vue` (new) — two-column split view: "Before filter (N)" with all top-K chunks, "After filter (M)" with only passed; rejected chunks dimmed; falls back to single column when no filtering
+- `frontend/src/components/MessageBubble.vue` — added `RAGPipelineSteps` above RAG context block, replaced flat chunk list with `RAGChunkSplitView` (with fallback for older messages)
+- `frontend/src/components/SendSettingsPopover.vue` — RAG Settings section (visible when doc selected): Threshold slider (0–1, step 0.05), Top K input, Query Rewrite checkbox, Strategy select (auto/semantic/sentence/structure/size)
+- `frontend/src/stores/chat.ts` — `ragTopK`, `ragThreshold`, `ragQueryRewrite`, `ragStrategy` reactive refs; `rag_step` SSE handler (upserts steps by name); `rag_context` handler extended to store `ragAllResults`, `ragRejected`, `ragRewrittenQuery`, `ragThreshold`
+- `frontend/src/lib/types.ts` — `RAGStep`, `RAGStepName`, `RAGStepStatus`, `RAGStepEvent` types; `RAGContextEvent` extended; `ChatMessage` extended with `ragSteps`, `ragAllResults`, `ragRejected`, `ragRewrittenQuery`, `ragThreshold`
 
-**Status:** Pending
+**Key code:** `performRAGSearch()`, `rewriteQuery()`, `filterResults()`, `RAGPipelineSteps.vue`, `RAGChunkSplitView.vue`, `ragThreshold`, `rag_step` SSE event

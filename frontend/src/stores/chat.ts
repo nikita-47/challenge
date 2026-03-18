@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ChatMessage, ToolCall, TokenUsage, ChatSettings, BranchInfo, TaskState } from '@/lib/types'
+import type { ChatMessage, ToolCall, TokenUsage, ChatSettings, BranchInfo, TaskState, RAGStep } from '@/lib/types'
 import { streamRequest } from '@/composables/useSSE'
 
 // Per-model pricing (USD per 1M tokens). Mirrors backend/models.go.
@@ -30,6 +30,10 @@ export const useChatStore = defineStore('chat', () => {
   const activeEnabledTools = ref<string[]>([])
   const activeMcpTools = ref<string[]>([])
   const activeRagDocIds = ref<string[]>([])
+  const ragTopK = ref(5)
+  const ragThreshold = ref(0.0)
+  const ragQueryRewrite = ref(false)
+  const ragStrategy = ref<string>('auto')
 
   let abortController: AbortController | null = null
 
@@ -114,8 +118,10 @@ export const useChatStore = defineStore('chat', () => {
       }),
       ...(activeRagDocIds.value.length > 0 && {
         ragDocIds: activeRagDocIds.value,
-        ragStrategy: 'auto',
-        ragTopK: 5,
+        ragThreshold: ragThreshold.value,
+        ragQueryRewrite: ragQueryRewrite.value,
+        ragStrategy: ragStrategy.value,
+        ragTopK: ragTopK.value,
       }),
       ...(settings.value && {
         model: settings.value.model,
@@ -226,12 +232,36 @@ export const useChatStore = defineStore('chat', () => {
             }
             break
 
+          case 'rag_step': {
+            for (let i = messages.value.length - 1; i >= 0; i--) {
+              const m = messages.value[i]
+              if (m && m.role === 'assistant') {
+                if (!m.ragSteps) {
+                  m.ragSteps = []
+                }
+                const existing = m.ragSteps.find((s: RAGStep) => s.step === event.step)
+                if (existing) {
+                  existing.status = event.status
+                  existing.detail = event.detail
+                } else {
+                  m.ragSteps.push({ step: event.step, status: event.status, detail: event.detail })
+                }
+                break
+              }
+            }
+            break
+          }
+
           case 'rag_context': {
             // Find the last assistant message and attach RAG context
             for (let i = messages.value.length - 1; i >= 0; i--) {
               const m = messages.value[i]
               if (m && m.role === 'assistant') {
                 m.ragContext = event.results
+                m.ragAllResults = event.all_results
+                m.ragRejected = event.rejected
+                m.ragRewrittenQuery = event.rewritten_query
+                m.ragThreshold = event.threshold
                 break
               }
             }
@@ -332,6 +362,10 @@ export const useChatStore = defineStore('chat', () => {
     activeEnabledTools,
     activeMcpTools,
     activeRagDocIds,
+    ragTopK,
+    ragThreshold,
+    ragQueryRewrite,
+    ragStrategy,
     startTask,
     continueTask,
     cancelTask,

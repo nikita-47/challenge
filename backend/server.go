@@ -629,9 +629,11 @@ type chatRequest struct {
 	EnabledTools []string `json:"enabledTools"`
 	Invariants   []string `json:"invariants"`
 	McpTools     []string `json:"mcpTools"`
-	RagDocIDs    []string `json:"ragDocIds"`
-	RagStrategy  string   `json:"ragStrategy"`
-	RagTopK      int      `json:"ragTopK"`
+	RagDocIDs       []string `json:"ragDocIds"`
+	RagStrategy     string   `json:"ragStrategy"`
+	RagTopK         int      `json:"ragTopK"`
+	RagThreshold    float64  `json:"ragThreshold"`
+	RagQueryRewrite bool     `json:"ragQueryRewrite"`
 }
 
 func handleChat(w http.ResponseWriter, r *http.Request, apiKey string, mcpMgr *MCPManager, docStore *DocumentStore) {
@@ -723,83 +725,11 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string, mcpMgr *M
 	effectiveMessage := req.Message
 
 	if len(req.RagDocIDs) > 0 && req.Message != "" {
-		ragStrategy := req.RagStrategy
-		if ragStrategy == "" {
-			ragStrategy = "auto"
-		}
-
-		ragTopK := req.RagTopK
-		if ragTopK <= 0 {
-			ragTopK = 5
-		}
-
-		queryEmbedding, embErr := GetEmbedding(req.Message)
-		if embErr != nil {
-			fmt.Fprintf(os.Stderr, "[rag] failed to embed query: %v\n", embErr)
-		} else {
-			type ragResultWithDoc struct {
-				SearchResult
-				DocName string `json:"doc_name"`
-			}
-
-			var allResults []ragResultWithDoc
-
-			for _, docID := range req.RagDocIDs {
-				doc := docStore.Get(docID)
-				if doc == nil || doc.IndexStatus != "ready" {
-					continue
-				}
-
-				idx, loadErr := loadCombinedIndex(docStore.indexDir, docID)
-				if loadErr != nil {
-					fmt.Fprintf(os.Stderr, "[rag] failed to load index for %s: %v\n", docID, loadErr)
-					continue
-				}
-
-				results := SearchChunks(idx, queryEmbedding, ragTopK, ragStrategy)
-				for _, r := range results {
-					allResults = append(allResults, ragResultWithDoc{
-						SearchResult: r,
-						DocName:      doc.OriginalName,
-					})
-				}
-			}
-
-			if len(allResults) > 0 {
-				// Sort all cross-doc results by score descending, keep top-K overall.
-				for i := 1; i < len(allResults); i++ {
-					for j := i; j > 0 && allResults[j].Score > allResults[j-1].Score; j-- {
-						allResults[j], allResults[j-1] = allResults[j-1], allResults[j]
-					}
-				}
-				if ragTopK < len(allResults) {
-					allResults = allResults[:ragTopK]
-				}
-
-				// Build XML context block.
-				var xmlParts []string
-				for _, r := range allResults {
-					xmlParts = append(xmlParts, fmt.Sprintf(
-						"<document source=%q chunk=%q relevance=\"%.4f\">\n%s\n</document>",
-						r.DocName,
-						r.Chunk.ID,
-						r.Score,
-						r.Chunk.Text,
-					))
-				}
-
-				ragContext := "<documents>\n" +
-					strings.Join(xmlParts, "\n") +
-					"\n</documents>\n\nAnswer the user's question based on the document fragments above. Cite specific data, numbers, and identifiers from the documents. Respond in the same language as the user's question."
-
-				// Emit rag_context SSE event before the LLM response starts.
-				sseWrite(w, map[string]any{
-					"type":    "rag_context",
-					"results": allResults,
-				})
-
-				effectiveMessage = ragContext + "\n\n" + req.Message
-			}
+		ragMessage, ragErr := performRAGSearch(w, apiKey, docStore, req)
+		if ragErr != nil {
+			fmt.Fprintf(os.Stderr, "[rag] pipeline error: %v\n", ragErr)
+		} else if ragMessage != "" {
+			effectiveMessage = ragMessage
 		}
 	}
 

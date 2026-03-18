@@ -3,6 +3,8 @@ import { computed, ref } from 'vue'
 import type { ChatMessage } from '@/lib/types'
 import { marked } from 'marked'
 import ToolCallCard from './ToolCallCard.vue'
+import RAGPipelineSteps from './RAGPipelineSteps.vue'
+import RAGChunkSplitView from './RAGChunkSplitView.vue'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 
 const props = defineProps<{
@@ -45,6 +47,12 @@ const ragDocCount = computed(() => {
       >
         {{ isUser ? '> you' : '$ claude' }}
       </div>
+      <RAGPipelineSteps
+        v-if="!isUser && message.ragSteps && message.ragSteps.length > 0"
+        :steps="message.ragSteps"
+        :rewritten-query="message.ragRewrittenQuery"
+      />
+
       <Collapsible
         v-if="!isUser && message.ragContext && message.ragContext.length > 0"
         v-model:open="ragContextExpanded"
@@ -59,24 +67,36 @@ const ragDocCount = computed(() => {
             <span class="text-muted-foreground/50 text-[10px] ml-auto">{{ ragContextExpanded ? '[-]' : '[+]' }}</span>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <div class="border-t border-border/50 divide-y divide-border/30">
-              <div
-                v-for="(result, i) in message.ragContext"
-                :key="i"
-                class="px-2 py-1.5 flex flex-col gap-0.5"
-              >
-                <div class="flex items-center gap-2">
-                  <span class="text-muted-foreground/70 font-medium truncate flex-1" :title="result.doc_name">
-                    {{ result.doc_name }}
-                  </span>
-                  <span class="text-emerald-500/70 font-mono shrink-0">
-                    {{ (result.score * 100).toFixed(0) }}%
-                  </span>
+            <div class="border-t border-border/50">
+              <!-- Split view when we have pre/post filter data -->
+              <RAGChunkSplitView
+                v-if="message.ragAllResults && message.ragAllResults.length > 0"
+                :passed="message.ragContext || []"
+                :rejected="message.ragRejected || []"
+                :threshold="message.ragThreshold || 0"
+              />
+              <!-- Fallback: original flat list for older messages -->
+              <template v-else>
+                <div class="divide-y divide-border/30">
+                  <div
+                    v-for="(result, i) in message.ragContext"
+                    :key="i"
+                    class="px-2 py-1.5 flex flex-col gap-0.5"
+                  >
+                    <div class="flex items-center gap-2">
+                      <span class="text-muted-foreground/70 font-medium truncate flex-1" :title="result.doc_name">
+                        {{ result.doc_name }}
+                      </span>
+                      <span class="text-emerald-500/70 font-mono shrink-0">
+                        {{ (result.score * 100).toFixed(0) }}%
+                      </span>
+                    </div>
+                    <p class="text-muted-foreground/60 leading-snug">
+                      {{ result.chunk.text.length > 150 ? result.chunk.text.slice(0, 150) + '…' : result.chunk.text }}
+                    </p>
+                  </div>
                 </div>
-                <p class="text-muted-foreground/60 leading-snug">
-                  {{ result.chunk.text.length > 150 ? result.chunk.text.slice(0, 150) + '…' : result.chunk.text }}
-                </p>
-              </div>
+              </template>
             </div>
           </CollapsibleContent>
         </div>

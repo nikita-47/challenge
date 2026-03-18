@@ -84,6 +84,23 @@ export interface RAGSearchResult {
   doc_name: string
 }
 
+// RAG Pipeline step types
+export type RAGStepName = 'rewrite' | 'embed' | 'search' | 'filter' | 'inject'
+export type RAGStepStatus = 'running' | 'done' | 'skipped' | 'error'
+
+export interface RAGStep {
+  step: RAGStepName
+  status: RAGStepStatus
+  detail?: unknown
+}
+
+export interface RAGStepEvent {
+  type: 'rag_step'
+  step: RAGStepName
+  status: RAGStepStatus
+  detail?: unknown
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -92,6 +109,11 @@ export interface ChatMessage {
   event?: SystemEvent
   apiRequest?: string
   ragContext?: RAGSearchResult[]
+  ragSteps?: RAGStep[]
+  ragAllResults?: RAGSearchResult[]
+  ragRejected?: RAGSearchResult[]
+  ragRewrittenQuery?: string
+  ragThreshold?: number
 }
 
 export interface ToolCall {
@@ -193,6 +215,10 @@ export interface StepResultEvent {
 export interface RAGContextEvent {
   type: 'rag_context'
   results: RAGSearchResult[]
+  all_results?: RAGSearchResult[]
+  rejected?: RAGSearchResult[]
+  rewritten_query?: string
+  threshold?: number
 }
 
 export type SSEEvent =
@@ -210,6 +236,7 @@ export type SSEEvent =
   | TaskStateEvent
   | StepResultEvent
   | RAGContextEvent
+  | RAGStepEvent
   | { type: 'memory_updated' }
   | { type: 'text'; Text: string }
 
