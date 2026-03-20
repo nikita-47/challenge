@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { ChatMessage, ToolCall, TokenUsage, ChatSettings, BranchInfo, TaskState, RAGStep } from '@/lib/types'
 import { streamRequest } from '@/composables/useSSE'
+import { parseRAGSources } from '@/lib/ragCitations'
 
 // Per-model pricing (USD per 1M tokens). Mirrors backend/models.go.
 const defaultPricing = { costIn: 3.0, costOut: 15.0 }
@@ -207,9 +208,16 @@ export const useChatStore = defineStore('chat', () => {
             }
             break
 
-          case 'done':
+          case 'done': {
             msg.isStreaming = false
+            // Parse RAG sources from hidden block appended by the backend
+            if (msg.ragContext || msg.ragNoContext) {
+              const { cleanContent, sources } = parseRAGSources(msg.content)
+              msg.content = cleanContent
+              msg.ragSources = sources
+            }
             break
+          }
 
           case 'error':
             error.value = event.message ?? event.text ?? 'Unknown error'
@@ -262,6 +270,7 @@ export const useChatStore = defineStore('chat', () => {
                 m.ragRejected = event.rejected
                 m.ragRewrittenQuery = event.rewritten_query
                 m.ragThreshold = event.threshold
+                m.ragNoContext = event.no_context ?? false
                 break
               }
             }

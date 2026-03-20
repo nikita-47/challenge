@@ -511,3 +511,19 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 - `frontend/src/lib/types.ts` — `RAGStep`, `RAGStepName`, `RAGStepStatus`, `RAGStepEvent` types; `RAGContextEvent` extended; `ChatMessage` extended with `ragSteps`, `ragAllResults`, `ragRejected`, `ragRewrittenQuery`, `ragThreshold`
 
 **Key code:** `performRAGSearch()`, `rewriteQuery()`, `filterResults()`, `RAGPipelineSteps.vue`, `RAGChunkSplitView.vue`, `ragThreshold`, `rag_step` SSE event
+
+---
+
+## Day 25 — RAG Citations, Sources & Anti-Hallucination ✅
+
+**Assignment:** Make the model always return: answer + source list (source + chunk_id) + quotes (fragments from found chunks). Add anti-hallucination rule: if relevance is below threshold, assistant must say "I don't know" and ask for clarification.
+
+**What was built on top of previous day:**
+- `backend/rag.go` — citation rules prompt (model must use `[N]` inline citations + `<!-- sources [...] -->` hidden block), `ref="N"` numbering on `<document>` tags, anti-hallucination `<rag_no_context>` instructions for both zero-results and all-filtered cases, SSE `rag_context` extended with `no_context` flag
+- `frontend/src/lib/ragCitations.ts` (new) — `parseRAGSources()` extracts hidden `<!-- sources -->` JSON block from response, `renderCitations()` replaces `[N]` in HTML with interactive badge spans (protects `<a>`/`<code>`/`<pre>` tags)
+- `frontend/src/components/RAGSourcesBlock.vue` (new) — collapsible sources block below response: ref Badge, filename, chunk ID, score% with color scale (emerald/amber/zinc)
+- `frontend/src/components/MessageBubble.vue` — inline citation rendering via `renderCitations()`, `RAGSourcesBlock` after response, amber anti-hallucination banner when `ragNoContext`
+- `frontend/src/lib/types.ts` — `RAGSource` interface, `ragNoContext`/`ragSources` on `ChatMessage`, `no_context` on `RAGContextEvent`
+- `frontend/src/stores/chat.ts` — `no_context` handling in `rag_context` SSE, source parsing via `parseRAGSources()` on stream `done`
+
+**Key code:** `parseRAGSources()`, `renderCitations()`, `RAGSourcesBlock.vue`, `RAGSource`, `ragNoContext`, `<rag_no_context>`, citation rules prompt, `.rag-cite` CSS

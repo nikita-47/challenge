@@ -5,7 +5,9 @@ import { marked } from 'marked'
 import ToolCallCard from './ToolCallCard.vue'
 import RAGPipelineSteps from './RAGPipelineSteps.vue'
 import RAGChunkSplitView from './RAGChunkSplitView.vue'
+import RAGSourcesBlock from './RAGSourcesBlock.vue'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
+import { renderCitations } from '@/lib/ragCitations'
 
 const props = defineProps<{
   message: ChatMessage
@@ -18,7 +20,11 @@ const renderedContent = computed(() => {
   if (!props.message.content) {
     return ''
   }
-  return marked.parse(props.message.content, { async: false }) as string
+  let html = marked.parse(props.message.content, { async: false }) as string
+  if (props.message.ragSources?.length) {
+    html = renderCitations(html, props.message.ragSources)
+  }
+  return html
 })
 
 const isUser = computed(() => props.message.role === 'user')
@@ -103,8 +109,21 @@ const ragDocCount = computed(() => {
       </Collapsible>
 
       <div
+        v-if="!isUser && message.ragNoContext"
+        class="flex items-center gap-2 px-2 py-1.5 mb-2 border border-amber-500/30 bg-amber-500/5 rounded-sm text-xs text-amber-400"
+      >
+        <span class="text-amber-500">!</span>
+        <span>No relevant documents found -- response based on anti-hallucination rules</span>
+      </div>
+
+      <div
         class="prose prose-sm max-w-none break-words text-foreground [&_pre]:bg-background [&_pre]:border [&_pre]:border-border [&_pre]:p-2 [&_pre]:overflow-x-auto [&_code]:text-primary [&_code]:text-xs [&_a]:text-accent-foreground [&_a]:underline [&_strong]:text-foreground [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground [&_h4]:text-foreground [&_li]:text-foreground [&_p]:text-foreground [&_blockquote]:border-primary/30 [&_blockquote]:text-muted-foreground [&_hr]:border-border"
         v-html="renderedContent"
+      />
+
+      <RAGSourcesBlock
+        v-if="!isUser && message.ragSources && message.ragSources.length > 0"
+        :sources="message.ragSources"
       />
       <Collapsible v-if="isUser && message.apiRequest" v-model:open="apiRequestExpanded" class="mt-2">
         <div class="border border-border bg-background text-xs">
@@ -132,3 +151,28 @@ const ragDocCount = computed(() => {
     </div>
   </div>
 </template>
+
+<style scoped>
+:deep(.rag-cite) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.25rem;
+  font-size: 10px;
+  font-family: monospace;
+  font-weight: 600;
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary));
+  border-radius: 2px;
+  cursor: help;
+  margin: 0 1px;
+  vertical-align: super;
+  line-height: 1;
+}
+
+:deep(.rag-cite:hover) {
+  background: hsl(var(--primary) / 0.25);
+}
+</style>

@@ -217,7 +217,29 @@ func performRAGSearch(w http.ResponseWriter, apiKey string, docStore *DocumentSt
 	})
 
 	if len(rawResults) == 0 {
-		return "", nil
+		sseWrite(w, map[string]any{
+			"type":   "rag_step",
+			"step":   "filter",
+			"status": "skipped",
+			"detail": map[string]any{"reason": "no results to filter"},
+		})
+		sseWrite(w, map[string]any{
+			"type":   "rag_step",
+			"step":   "inject",
+			"status": "skipped",
+			"detail": map[string]any{"reason": "no results found"},
+		})
+		sseWrite(w, map[string]any{
+			"type":            "rag_context",
+			"results":         []ragResultWithDoc{},
+			"all_results":     []ragResultWithDoc{},
+			"rejected":        []ragResultWithDoc{},
+			"rewritten_query": rewrittenQuery,
+			"threshold":       req.RagThreshold,
+			"no_context":      true,
+		})
+		noResultsMsg := "<rag_no_context>\nThe user's question was searched against the document database, but no matching chunks were found at all.\nYou MUST respond that you cannot answer this question based on the available documents.\nSuggest the user: try different search terms, check that the right documents are selected, or upload more relevant documents.\nDo NOT attempt to answer from your general knowledge.\n</rag_no_context>\n\n" + originalQuery
+		return noResultsMsg, nil
 	}
 
 	// Step 4: threshold filter.
@@ -250,15 +272,41 @@ func performRAGSearch(w http.ResponseWriter, apiKey string, docStore *DocumentSt
 	}
 
 	if len(passed) == 0 {
-		return "", nil
+		rejectedWithDoc := make([]ragResultWithDoc, 0, len(rejected))
+		for _, r := range rejected {
+			rejectedWithDoc = append(rejectedWithDoc, ragResultWithDocFromSearchResult(r, docNameByChunkID[r.Chunk.ID]))
+		}
+		allWithDoc := make([]ragResultWithDoc, 0, len(rawResults))
+		for _, r := range rawResults {
+			allWithDoc = append(allWithDoc, ragResultWithDocFromSearchResult(r, docNameByChunkID[r.Chunk.ID]))
+		}
+		sseWrite(w, map[string]any{
+			"type":   "rag_step",
+			"step":   "inject",
+			"status": "skipped",
+			"detail": map[string]any{"reason": "all chunks below threshold"},
+		})
+		sseWrite(w, map[string]any{
+			"type":            "rag_context",
+			"results":         []ragResultWithDoc{},
+			"all_results":     allWithDoc,
+			"rejected":        rejectedWithDoc,
+			"rewritten_query": rewrittenQuery,
+			"threshold":       req.RagThreshold,
+			"no_context":      true,
+		})
+		noContextMsg := "<rag_no_context>\nThe user's question was searched against the document database, but no chunks met the relevance threshold (" + fmt.Sprintf("%.2f", req.RagThreshold) + ").\nYou MUST respond that you cannot answer this question based on the available documents.\nSuggest the user: lower the relevance threshold, rephrase the question, or upload more relevant documents.\nDo NOT attempt to answer from your general knowledge.\n</rag_no_context>\n\n" + originalQuery
+		return noContextMsg, nil
 	}
 
 	// Step 5: build XML context block from passed chunks only.
+	// Each document tag gets a numeric ref attribute starting from 1.
 	var xmlParts []string
-	for _, r := range passed {
+	for i, r := range passed {
 		docName := docNameByChunkID[r.Chunk.ID]
 		xmlParts = append(xmlParts, fmt.Sprintf(
-			"<document source=%q chunk=%q relevance=\"%.4f\">\n%s\n</document>",
+			"<document ref=\"%d\" source=%q chunk=%q relevance=\"%.4f\">\n%s\n</document>",
+			i+1,
 			docName,
 			r.Chunk.ID,
 			r.Score,
@@ -266,9 +314,22 @@ func performRAGSearch(w http.ResponseWriter, apiKey string, docStore *DocumentSt
 		))
 	}
 
+	citationRules := `CITATION RULES:
+- Base your answer ONLY on the document fragments above.
+- When you use information from a document, add an inline citation using the format [N] where N is the document ref number.
+- At the very end of your response, add a sources block in this exact format:
+<!-- sources
+[{"ref":1,"source":"filename.pdf","chunk":"chunk_id","score":0.82},{"ref":2,...}]
+-->
+- Only include sources you actually cited in your answer.
+- If the documents do not contain enough information to answer the question, say explicitly that you cannot answer based on the available documents and suggest how the user might refine their query.
+- Do NOT invent or hallucinate information not present in the provided documents.
+- Include direct quotes from the documents where appropriate, using blockquotes (> quote text).
+- Respond in the same language as the user's question.`
+
 	ragContext := "<documents>\n" +
 		strings.Join(xmlParts, "\n") +
-		"\n</documents>\n\nAnswer the user's question based on the document fragments above. Cite specific data, numbers, and identifiers from the documents. Respond in the same language as the user's question."
+		"\n</documents>\n\n" + citationRules
 
 	sseWrite(w, map[string]any{
 		"type":   "rag_step",

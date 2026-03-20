@@ -71,6 +71,13 @@ export interface SystemEvent {
   tokensSaved?: number
 }
 
+export interface RAGSource {
+  ref: number
+  source: string
+  chunk: string
+  score: number
+}
+
 export interface RAGSearchResult {
   chunk: {
     id: string
@@ -114,6 +121,8 @@ export interface ChatMessage {
   ragRejected?: RAGSearchResult[]
   ragRewrittenQuery?: string
   ragThreshold?: number
+  ragNoContext?: boolean
+  ragSources?: RAGSource[]
 }
 
 export interface ToolCall {
@@ -219,6 +228,7 @@ export interface RAGContextEvent {
   rejected?: RAGSearchResult[]
   rewritten_query?: string
   threshold?: number
+  no_context?: boolean
 }
 
 export type SSEEvent =
