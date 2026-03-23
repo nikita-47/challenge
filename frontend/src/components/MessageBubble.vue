@@ -8,10 +8,21 @@ import RAGChunkSplitView from './RAGChunkSplitView.vue'
 import RAGSourcesBlock from './RAGSourcesBlock.vue'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { renderCitations } from '@/lib/ragCitations'
+import { useUIStore } from '@/stores/ui'
 
 const props = defineProps<{
   message: ChatMessage
 }>()
+
+const ui = useUIStore()
+
+const assistantLabel = computed(() => {
+  const s = ui.providerSettings
+  if (s.provider === 'local' && s.localModel) {
+    return `$ ${s.localModel}`
+  }
+  return '$ claude'
+})
 
 const apiRequestExpanded = ref(false)
 const ragContextExpanded = ref(false)
@@ -51,7 +62,7 @@ const ragDocCount = computed(() => {
         class="text-xs font-medium mb-1"
         :class="isUser ? 'text-primary' : 'text-accent-foreground'"
       >
-        {{ isUser ? '> you' : '$ claude' }}
+        {{ isUser ? '> you' : assistantLabel }}
       </div>
       <RAGPipelineSteps
         v-if="!isUser && message.ragSteps && message.ragSteps.length > 0"

@@ -797,7 +797,13 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string, mcpMgr *M
 		localCfg := cfg
 		localCfg.model = model
 
-		result, _, chatErr = streamChatOpenAI(localURL, model, localCfg, compressed, func(token string) {
+		// Append current user message — compressed only has history from session.
+		localMsgs := compressed
+		if effectiveMessage != "" {
+			localMsgs = append(localMsgs, message{Role: "user", Content: effectiveMessage})
+		}
+
+		result, _, chatErr = streamChatOpenAI(localURL, model, localCfg, localMsgs, func(token string) {
 			sseWrite(w, AgentEvent{Type: "text_delta", Text: token})
 		})
 		if chatErr != nil {
