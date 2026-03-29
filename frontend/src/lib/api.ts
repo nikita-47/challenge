@@ -257,9 +257,10 @@ export async function fetchBranchesAPI(session: string) {
 // ─── Provider Settings API ────────────────────────────────────────────────────
 
 export interface ProviderSettings {
-  provider: 'claude' | 'local'
+  provider: 'claude' | 'local' | 'railway'
   localURL: string
   localModel: string
+  localKey: string
 }
 
 export async function fetchSettings(): Promise<ProviderSettings> {

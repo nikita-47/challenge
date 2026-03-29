@@ -18,20 +18,22 @@ type providerSettings struct {
 	Provider   string `json:"provider"`   // "claude" | "local"
 	LocalURL   string `json:"localURL"`   // e.g. "http://localhost:1234"
 	LocalModel string `json:"localModel"` // e.g. "qwen2.5-0.5b-instruct-mlx"
+	LocalKey   string `json:"localKey"`   // optional API key for remote LLM
 }
 
-func (ps *providerSettings) get() (provider, localURL, localModel string) {
+func (ps *providerSettings) get() (provider, localURL, localModel, localKey string) {
 	ps.mu.RLock()
 	defer ps.mu.RUnlock()
-	return ps.Provider, ps.LocalURL, ps.LocalModel
+	return ps.Provider, ps.LocalURL, ps.LocalModel, ps.LocalKey
 }
 
-func (ps *providerSettings) set(provider, localURL, localModel string) {
+func (ps *providerSettings) set(provider, localURL, localModel, localKey string) {
 	ps.mu.Lock()
 	defer ps.mu.Unlock()
 	ps.Provider = provider
 	ps.LocalURL = localURL
 	ps.LocalModel = localModel
+	ps.LocalKey = localKey
 }
 
 var globalProvider providerSettings
@@ -39,9 +41,9 @@ var globalProvider providerSettings
 func startServer(apiKey string, cfg config) {
 	// Initialize global provider from CLI flags.
 	if cfg.baseURL != "" {
-		globalProvider.set("local", cfg.baseURL, cfg.model)
+		globalProvider.set("local", cfg.baseURL, cfg.model, "")
 	} else {
-		globalProvider.set("claude", "http://localhost:1234", "qwen2.5-0.5b-instruct-mlx")
+		globalProvider.set("claude", "http://localhost:1234", "qwen2.5-0.5b-instruct-mlx", "")
 	}
 
 	mux := http.NewServeMux()
@@ -137,7 +139,7 @@ func startServer(apiKey string, cfg config) {
 		if cfg.model != "" {
 			model = cfg.model
 		}
-		provider, localURL, localModel := globalProvider.get()
+		provider, localURL, localModel, localKey := globalProvider.get()
 		p := PricingFor(model)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -148,6 +150,7 @@ func startServer(apiKey string, cfg config) {
 			"provider":    provider,
 			"localURL":    localURL,
 			"localModel":  localModel,
+			"localKey":    localKey,
 			"costIn":      p.CostIn,
 			"costOut":     p.CostOut,
 		})
@@ -255,11 +258,11 @@ func sseWrite(w http.ResponseWriter, data any) {
 
 // ─── Task phase orchestrator ─────────────────────────────────────────────────
 
-func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []string, emit func(AgentEvent), localURL string, localModel string) error {
+func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []string, emit func(AgentEvent), localURL, localModel, localKey string) error {
 	ts := cw.TaskState
 
 	if localURL != "" {
-		return runTaskPhaseLocal(localURL, localModel, cfg, cw, emit)
+		return runTaskPhaseLocal(localURL, localModel, localKey, cfg, cw, emit)
 	}
 
 	// Ensure a single sandbox directory is shared across all phases of this task.
@@ -447,7 +450,7 @@ func runTaskPhase(apiKey string, cfg config, cw *contextWindow, enabledTools []s
 }
 
 // runTaskPhaseLocal handles task phases using a local LLM (text-only, no tools).
-func runTaskPhaseLocal(localURL, localModel string, cfg config, cw *contextWindow, emit func(AgentEvent)) error {
+func runTaskPhaseLocal(localURL, localModel, localKey string, cfg config, cw *contextWindow, emit func(AgentEvent)) error {
 	ts := cw.TaskState
 	model := localModel
 	if model == "" {
@@ -475,7 +478,7 @@ func runTaskPhaseLocal(localURL, localModel string, cfg config, cw *contextWindo
 		localCfg.system = system
 		msgs := []message{{Role: "user", Content: ts.Goal}}
 
-		text, _, err := streamChatOpenAI(localURL, model, localCfg, msgs, func(token string) {
+		text, _, err := streamChatOpenAI(localURL, model, localKey, localCfg, msgs, func(token string) {
 			emit(AgentEvent{Type: "text_delta", Text: token})
 		})
 		if err != nil {
@@ -502,7 +505,7 @@ func runTaskPhaseLocal(localURL, localModel string, cfg config, cw *contextWindo
 		localCfg.system = system
 		msgs := []message{{Role: "user", Content: ts.Goal}}
 
-		text, _, err := streamChatOpenAI(localURL, model, localCfg, msgs, func(token string) {
+		text, _, err := streamChatOpenAI(localURL, model, localKey, localCfg, msgs, func(token string) {
 			emit(AgentEvent{Type: "text_delta", Text: token})
 		})
 		if err != nil {
@@ -523,7 +526,7 @@ func runTaskPhaseLocal(localURL, localModel string, cfg config, cw *contextWindo
 		localCfg.system = system
 		msgs := []message{{Role: "user", Content: "Execute the plan for: " + ts.Goal}}
 
-		text, _, err := streamChatOpenAI(localURL, model, localCfg, msgs, func(token string) {
+		text, _, err := streamChatOpenAI(localURL, model, localKey, localCfg, msgs, func(token string) {
 			emit(AgentEvent{Type: "text_delta", Text: token})
 		})
 		if err != nil {
@@ -553,7 +556,7 @@ func runTaskPhaseLocal(localURL, localModel string, cfg config, cw *contextWindo
 		localCfg.system = system
 		msgs := []message{{Role: "user", Content: "Validate the results for: " + ts.Goal}}
 
-		text, _, err := streamChatOpenAI(localURL, model, localCfg, msgs, func(token string) {
+		text, _, err := streamChatOpenAI(localURL, model, localKey, localCfg, msgs, func(token string) {
 			emit(AgentEvent{Type: "text_delta", Text: token})
 		})
 		if err != nil {
@@ -734,7 +737,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string, mcpMgr *M
 	}
 
 	// Read current provider settings.
-	provider, localURL, localModel := globalProvider.get()
+	provider, localURL, localModel, localKey := globalProvider.get()
 
 	var result string
 	var chatErr error
@@ -777,18 +780,20 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string, mcpMgr *M
 		// Pass localURL/localModel for local provider, empty strings for Claude.
 		taskLocalURL := ""
 		taskLocalModel := ""
-		if provider == "local" {
+		taskLocalKey := ""
+		if provider == "local" || provider == "railway" {
 			taskLocalURL = localURL
 			taskLocalModel = localModel
+			taskLocalKey = localKey
 		}
 
-		chatErr = runTaskPhase(apiKey, cfg, cw, req.EnabledTools, emit, taskLocalURL, taskLocalModel)
+		chatErr = runTaskPhase(apiKey, cfg, cw, req.EnabledTools, emit, taskLocalURL, taskLocalModel, taskLocalKey)
 		if chatErr != nil {
 			sseWrite(w, map[string]any{"type": "error", "message": chatErr.Error()})
 		}
 
 		result = cw.TaskState.Phase // marker for session save
-	} else if provider == "local" {
+	} else if provider == "local" || provider == "railway" {
 		// Local LLM path: stream directly via OpenAI-compatible API.
 		model := localModel
 		if model == "" {
@@ -803,7 +808,7 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string, mcpMgr *M
 			localMsgs = append(localMsgs, message{Role: "user", Content: effectiveMessage})
 		}
 
-		result, _, chatErr = streamChatOpenAI(localURL, model, localCfg, localMsgs, func(token string) {
+		result, _, chatErr = streamChatOpenAI(localURL, model, localKey, localCfg, localMsgs, func(token string) {
 			sseWrite(w, AgentEvent{Type: "text_delta", Text: token})
 		})
 		if chatErr != nil {
@@ -1172,12 +1177,13 @@ func handleMemoryItem(w http.ResponseWriter, r *http.Request, name, dir string) 
 // ─── Settings endpoints ──────────────────────────────────────────────────────
 
 func handleGetSettings(w http.ResponseWriter, r *http.Request) {
-	provider, localURL, localModel := globalProvider.get()
+	provider, localURL, localModel, localKey := globalProvider.get()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"provider":   provider,
 		"localURL":   localURL,
 		"localModel": localModel,
+		"localKey":   localKey,
 	})
 }
 
@@ -1186,6 +1192,7 @@ func handlePostSettings(w http.ResponseWriter, r *http.Request) {
 		Provider   string `json:"provider"`
 		LocalURL   string `json:"localURL"`
 		LocalModel string `json:"localModel"`
+		LocalKey   string `json:"localKey"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
@@ -1193,25 +1200,26 @@ func handlePostSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate provider value.
-	if req.Provider != "claude" && req.Provider != "local" {
-		http.Error(w, `provider must be "claude" or "local"`, http.StatusBadRequest)
+	if req.Provider != "claude" && req.Provider != "local" && req.Provider != "railway" {
+		http.Error(w, `provider must be "claude", "local", or "railway"`, http.StatusBadRequest)
 		return
 	}
 
-	// When provider is local, localURL is required.
-	if req.Provider == "local" && req.LocalURL == "" {
+	// When provider is local or railway, localURL is required.
+	if (req.Provider == "local" || req.Provider == "railway") && req.LocalURL == "" {
 		http.Error(w, "localURL is required when provider is local", http.StatusBadRequest)
 		return
 	}
 
-	globalProvider.set(req.Provider, req.LocalURL, req.LocalModel)
+	globalProvider.set(req.Provider, req.LocalURL, req.LocalModel, req.LocalKey)
 
-	provider, localURL, localModel := globalProvider.get()
+	provider, localURL, localModel, localKey := globalProvider.get()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"status":     "updated",
 		"provider":   provider,
 		"localURL":   localURL,
 		"localModel": localModel,
+		"localKey":   localKey,
 	})
 }

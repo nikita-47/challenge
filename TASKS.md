@@ -527,3 +527,21 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 - `frontend/src/stores/chat.ts` — `no_context` handling in `rag_context` SSE, source parsing via `parseRAGSources()` on stream `done`
 
 **Key code:** `parseRAGSources()`, `renderCitations()`, `RAGSourcesBlock.vue`, `RAGSource`, `ragNoContext`, `<rag_no_context>`, citation rules prompt, `.rag-cite` CSS
+
+---
+
+## Day 30 — Private LLM Service (Railway Deploy) ✅
+
+**Assignment:** Deploy a local LLM as a private service with HTTP API, chat capability, network access, stability under load, and basic rate limiting.
+
+**What was built on top of previous day:**
+- `deploy/ollama-railway/` (new) — Dockerfile (multi-stage: Go builder + ollama base), `entrypoint.sh` (ollama serve + tinyllama pull + proxy), `main.go` (auth reverse proxy with Bearer token + per-IP rate limiter 30 req/min), `go.mod`
+- Deployed to Railway: Ollama + tinyllama model + auth proxy on `https://ollama-proxy-production-5097.up.railway.app`
+- `backend/server.go` — added `"railway"` as third provider (alongside `claude`/`local`), `localKey` field in `providerSettings` for API key auth on remote LLM
+- `backend/api.go` — `streamChatOpenAI()` now accepts `apiKey` param, sets `Authorization: Bearer` header when provided
+- `backend/chat.go` — updated `runTaskPhase()` and `streamChatOpenAI()` calls to pass `localKey`
+- `frontend/src/components/GlobalSettings.vue` — three provider buttons (`claude | local | railway`), `selectRailway()` auto-fills URL + model, API key input field, blue indicator dot for railway
+- `frontend/src/lib/api.ts` — `ProviderSettings.provider` extended to `'claude' | 'local' | 'railway'`, added `localKey`
+- `frontend/src/stores/ui.ts` — `localKey` default in provider settings
+
+**Key code:** `deploy/ollama-railway/main.go` (auth proxy + rate limiter), `selectRailway()`, `providerSettings.LocalKey`, `streamChatOpenAI()` auth header

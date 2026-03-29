@@ -8,6 +8,7 @@ const ui = useUIStore()
 const localProvider = ref<ProviderSettings['provider']>(ui.providerSettings.provider)
 const localURL = ref(ui.providerSettings.localURL)
 const localModel = ref(ui.providerSettings.localModel)
+const localKey = ref(ui.providerSettings.localKey)
 const saving = ref(false)
 const saved = ref(false)
 
@@ -17,9 +18,16 @@ watch(
     localProvider.value = v.provider
     localURL.value = v.localURL
     localModel.value = v.localModel
+    localKey.value = v.localKey
   },
   { deep: true },
 )
+
+function selectRailway() {
+  localProvider.value = 'railway'
+  localURL.value = 'https://ollama-proxy-production-5097.up.railway.app'
+  localModel.value = 'tinyllama'
+}
 
 async function apply() {
   saving.value = true
@@ -29,6 +37,7 @@ async function apply() {
       provider: localProvider.value,
       localURL: localURL.value,
       localModel: localModel.value,
+      localKey: localKey.value,
     })
     saved.value = true
     setTimeout(() => {
@@ -50,8 +59,8 @@ async function apply() {
       </div>
       <span
         class="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-        :class="localProvider === 'claude' ? 'bg-orange-400' : 'bg-green-400'"
-        :title="localProvider === 'claude' ? 'Claude API' : 'Local LLM'"
+        :class="localProvider === 'claude' ? 'bg-orange-400' : localProvider === 'railway' ? 'bg-blue-400' : 'bg-green-400'"
+        :title="localProvider === 'claude' ? 'Claude API' : localProvider === 'railway' ? 'Railway Ollama' : 'Local LLM'"
       />
     </div>
 
@@ -70,9 +79,16 @@ async function apply() {
       >
         local
       </button>
+      <button
+        class="flex-1 px-2 py-0.5 text-xs transition-colors border"
+        :class="localProvider === 'railway' ? 'bg-primary/10 text-primary border-primary/30' : 'text-muted-foreground hover:text-foreground border-transparent'"
+        @click="selectRailway"
+      >
+        railway
+      </button>
     </div>
 
-    <template v-if="localProvider === 'local'">
+    <template v-if="localProvider === 'local' || localProvider === 'railway'">
       <input
         v-model="localURL"
         class="bg-background border border-border text-sm px-2 py-1 w-full outline-none focus:border-primary/30"
@@ -82,6 +98,12 @@ async function apply() {
         v-model="localModel"
         class="bg-background border border-border text-sm px-2 py-1 w-full outline-none focus:border-primary/30"
         placeholder="model name"
+      />
+      <input
+        v-model="localKey"
+        type="password"
+        class="bg-background border border-border text-sm px-2 py-1 w-full outline-none focus:border-primary/30"
+        placeholder="api key (optional)"
       />
     </template>
 

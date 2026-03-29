@@ -12,6 +12,7 @@ export const useUIStore = defineStore('ui', () => {
     provider: 'local',
     localURL: 'http://localhost:1234',
     localModel: 'qwen2.5-0.5b-instruct-mlx',
+    localKey: '',
   })
 
   function setView(view: 'chat' | 'pipeline' | 'docs') {

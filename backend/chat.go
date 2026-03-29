@@ -235,7 +235,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 				Artifacts: make(map[string]string),
 			}
 			fmt.Printf("\033[1m[Task] Starting: %s\033[0m\n", goal)
-			if err := runTaskPhase(apiKey, cfg, cw, nil, cliAgentEmit, cfg.baseURL, cfg.model); err != nil {
+			if err := runTaskPhase(apiKey, cfg, cw, nil, cliAgentEmit, cfg.baseURL, cfg.model, ""); err != nil {
 				fmt.Fprintf(os.Stderr, "Task error: %v\n\n", err)
 			}
 			fmt.Println(cw.TaskState.FormatStatus())
@@ -263,7 +263,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 			}
 			cw.TaskState.Paused = false
 			fmt.Printf("\033[1m[Task] Resuming phase: %s\033[0m\n", cw.TaskState.Phase)
-			if err := runTaskPhase(apiKey, cfg, cw, nil, cliAgentEmit, cfg.baseURL, cfg.model); err != nil {
+			if err := runTaskPhase(apiKey, cfg, cw, nil, cliAgentEmit, cfg.baseURL, cfg.model, ""); err != nil {
 				fmt.Fprintf(os.Stderr, "Task error: %v\n\n", err)
 			}
 			fmt.Println(cw.TaskState.FormatStatus())
@@ -425,7 +425,7 @@ func runChat(apiKey, openaiKey string, cfg config) {
 		var reply string
 		var usage tokenUsage
 		if cfg.baseURL != "" {
-			reply, usage, err = streamChatOpenAI(cfg.baseURL, cfg.model, cfg, compressed, tw.OnToken)
+			reply, usage, err = streamChatOpenAI(cfg.baseURL, cfg.model, "", cfg, compressed, tw.OnToken)
 		} else {
 			reply, usage, err = streamChat(apiKey, cfg, compressed, tw.OnToken)
 		}

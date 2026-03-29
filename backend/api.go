@@ -230,7 +230,7 @@ func streamChat(apiKey string, cfg config, msgs []message, onToken func(string))
 	return readStream(resp.Body, onToken)
 }
 
-func streamChatOpenAI(baseURL, model string, cfg config, msgs []message, onToken func(string)) (string, tokenUsage, error) {
+func streamChatOpenAI(baseURL, model, apiKey string, cfg config, msgs []message, onToken func(string)) (string, tokenUsage, error) {
 	if model == "" {
 		model = "default"
 	}
@@ -238,6 +238,9 @@ func streamChatOpenAI(baseURL, model string, cfg config, msgs []message, onToken
 
 	req, _ := http.NewRequest("POST", baseURL+"/v1/chat/completions", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
