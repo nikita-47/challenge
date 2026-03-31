@@ -334,3 +334,22 @@ export interface MCPToolInfo {
   description: string
   inputSchema: unknown
 }
+
+// ─── Code Review Types ──────────────────────────────────────────────────────
+export interface PullRequest {
+  number: number
+  title: string
+  author: string
+  branch: string
+  url?: string
+  labels: string[]
+}
+
+export type ReviewStepName = 'diff' | 'rag' | 'analyze' | 'comment'
+export type ReviewStepStatus = 'running' | 'done' | 'skipped' | 'error'
+
+export interface ReviewStep {
+  step: ReviewStepName
+  status: ReviewStepStatus
+  detail?: string
+}

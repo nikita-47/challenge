@@ -562,3 +562,22 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 - `.mcp_servers.json` / `.mcp_servers.example.json` — added `devtools` server entry
 
 **Key code:** `autoIndexProjectDocs()`, `/help` handling in `handleChat()`, `mcp-servers/devtools/main.go`, `isHelpCommand` computed in ChatInput
+
+---
+
+## Day 32 — Code Review Automation ✅
+
+**Assignment:** Set up a pipeline where the assistant analyzes a new PR — gets diff and changed files, uses RAG (docs + code), returns a structured review (bugs, architecture, recommendations). Posts the review as a comment on the PR.
+
+**What was built on top of previous day:**
+- `backend/review.go` (new) — full code review pipeline. `listOpenPRs()` via `gh pr list`, `getPRDiff()` via `gh pr diff`, `getPRFiles()` (changed file names), `postPRComment()` via `gh pr comment`. `buildReviewRAGContext()` enriches diff with project docs via RAG (graceful degradation if Ollama down). `performCodeReview()` — 4-step SSE pipeline: diff → rag → analyze (streaming Claude Sonnet) → comment. `handleListPRs()`, `handleRunReview()` HTTP handlers
+- `backend/server.go` — two new routes: `GET /api/review/prs`, `POST /api/review/run`
+- `frontend/src/stores/review.ts` (new) — Pinia store with SSE streaming, PR list, step tracking, abort control
+- `frontend/src/components/ReviewView.vue` (new) — full-screen layout: left panel (PR list), center (meta bar, run/cancel buttons, 4-step pipeline indicator, markdown-rendered review)
+- `frontend/src/lib/types.ts` — added `PullRequest`, `ReviewStep`, `ReviewStepEvent` types + extended `SSEEvent` union
+- `frontend/src/lib/api.ts` — added `fetchOpenPRs()`
+- `frontend/src/stores/ui.ts` — extended `activeView` to include `'review'`
+- `frontend/src/App.vue` — added `ReviewView` conditional rendering
+- `frontend/src/components/SessionPanel.vue` — added "code review" nav button
+
+**Key code:** `performCodeReview()`, `buildReviewRAGContext()`, `listOpenPRs()`, `postPRComment()`, `useReviewStore`, `ReviewView.vue`

@@ -10,6 +10,7 @@ import BranchSelector from '@/components/BranchSelector.vue'
 import TaskStatePanel from '@/components/TaskStatePanel.vue'
 import PipelineView from '@/components/PipelineView.vue'
 import DocsView from '@/components/DocsView.vue'
+import ReviewView from '@/components/ReviewView.vue'
 import { Button } from '@/components/ui/button'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
@@ -36,6 +37,9 @@ onMounted(() => {
 
   <!-- Pipeline full-screen view -->
   <PipelineView v-else-if="ui.activeView === 'pipeline'" />
+
+  <!-- Review full-screen view -->
+  <ReviewView v-else-if="ui.activeView === 'review'" />
 
   <!-- Chat view -->
   <div v-else-if="ui.activeView === 'chat'" class="flex h-screen w-screen overflow-hidden bg-background">

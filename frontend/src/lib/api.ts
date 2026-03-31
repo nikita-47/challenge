@@ -1,4 +1,4 @@
-import type { MCPServerStatus, MCPToolInfo, DocumentMeta, ChunkIndex } from '@/lib/types'
+import type { MCPServerStatus, MCPToolInfo, DocumentMeta, ChunkIndex, PullRequest } from '@/lib/types'
 
 export interface SessionInfo {
   name: string
@@ -397,4 +397,14 @@ export async function callMCPTool(server: string, tool: string, args: Record<str
     return texts.join('\n')
   }
   return data.result ?? JSON.stringify(data)
+}
+
+// ─── Code Review API ────────────────────────────────────────────────────────
+
+export async function fetchOpenPRs(): Promise<PullRequest[]> {
+  const resp = await fetch('/api/review/prs')
+  if (!resp.ok) {
+    throw new Error(`Failed to fetch PRs: ${resp.statusText}`)
+  }
+  return resp.json()
 }

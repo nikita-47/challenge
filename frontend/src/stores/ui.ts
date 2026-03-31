@@ -7,7 +7,7 @@ export const useUIStore = defineStore('ui', () => {
   const rightSidebarOpen = ref(false)
   const config = ref<AppConfig | null>(null)
   const newChatDialogOpen = ref(false)
-  const activeView = ref<'chat' | 'pipeline' | 'docs'>('chat')
+  const activeView = ref<'chat' | 'pipeline' | 'docs' | 'review'>('chat')
   const providerSettings = ref<ProviderSettings>({
     provider: 'local',
     localURL: 'http://localhost:1234',
@@ -15,7 +15,7 @@ export const useUIStore = defineStore('ui', () => {
     localKey: '',
   })
 
-  function setView(view: 'chat' | 'pipeline' | 'docs') {
+  function setView(view: 'chat' | 'pipeline' | 'docs' | 'review') {
     activeView.value = view
   }
 
