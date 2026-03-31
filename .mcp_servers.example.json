@@ -15,6 +15,9 @@
       "env": {
         "ANTHROPIC_API_KEY": "sk-ant-..."
       }
+    },
+    "devtools": {
+      "command": "./mcp-servers/devtools/devtools"
     }
   }
 }

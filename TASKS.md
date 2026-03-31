@@ -545,3 +545,20 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 - `frontend/src/stores/ui.ts` — `localKey` default in provider settings
 
 **Key code:** `deploy/ollama-railway/main.go` (auth proxy + rate limiter), `selectRailway()`, `providerSettings.LocalKey`, `streamChatOpenAI()` auth header
+
+---
+
+## Day 31 — Developer Assistant ✅
+
+**Assignment:** Create a developer assistant that understands the project. Generate project documentation, implement RAG on it with local embeddings, add MCP server for project context, and a /help command.
+
+**What was built on top of previous day:**
+- `docs/` (new) — 5 documentation files: `api-reference.md`, `data-schemas.md`, `architecture.md`, `mcp-servers.md`, `frontend-guide.md`
+- `mcp-servers/devtools/main.go` (new) — MCP server with 5 tools: `dev_git_branch`, `dev_git_status`, `dev_git_log`, `dev_list_files`, `dev_read_file`. Stdio transport, path traversal protection
+- `backend/docs.go` — `autoIndexProjectDocs()` scans `docs/*.md` at startup, auto-indexes into RAG pipeline. `FindByOriginalName()`, `AllReadyDocIDs()` helpers
+- `backend/server.go` — `/help` command detection in `handleChat()`: strips prefix, auto-injects RAG with all project docs, sets assistant system prompt. Calls `autoIndexProjectDocs()` at startup
+- `frontend/src/components/ChatInput.vue` — `/help` prefix detection with Badge hint, dynamic placeholder
+- `dev.sh` — added devtools build step in `build_mcp_servers()`
+- `.mcp_servers.json` / `.mcp_servers.example.json` — added `devtools` server entry
+
+**Key code:** `autoIndexProjectDocs()`, `/help` handling in `handleChat()`, `mcp-servers/devtools/main.go`, `isHelpCommand` computed in ChatInput

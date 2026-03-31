@@ -432,6 +432,94 @@ func handleSearchDoc(w http.ResponseWriter, r *http.Request, store *DocumentStor
 	})
 }
 
+// FindByOriginalName returns the first document matching the given original filename.
+func (ds *DocumentStore) FindByOriginalName(name string) *DocumentMeta {
+	ds.mu.RLock()
+	defer ds.mu.RUnlock()
+
+	for _, d := range ds.docs {
+		if d.OriginalName == name {
+			return d
+		}
+	}
+	return nil
+}
+
+// AllReadyDocIDs returns IDs of all documents with index_status "ready".
+func (ds *DocumentStore) AllReadyDocIDs() []string {
+	ds.mu.RLock()
+	defer ds.mu.RUnlock()
+
+	var ids []string
+	for _, d := range ds.docs {
+		if d.IndexStatus == "ready" {
+			ids = append(ids, d.ID)
+		}
+	}
+	return ids
+}
+
+// autoIndexProjectDocs scans docs/*.md files and indexes any that aren't already in the store.
+// This enables RAG over project documentation without manual upload.
+func autoIndexProjectDocs(store *DocumentStore) {
+	matches, err := filepath.Glob("docs/*.md")
+	if err != nil || len(matches) == 0 {
+		return
+	}
+
+	for _, filePath := range matches {
+		originalName := filepath.Base(filePath)
+
+		// Skip if already indexed.
+		if existing := store.FindByOriginalName(originalName); existing != nil {
+			continue
+		}
+
+		id, err := generateDocID()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[auto-index] id generation failed for %s: %v\n", originalName, err)
+			continue
+		}
+
+		info, err := os.Stat(filePath)
+		if err != nil {
+			continue
+		}
+
+		// Copy file to uploads dir.
+		storedFilename := id + "_" + originalName
+		destPath := filepath.Join(store.uploadDir, storedFilename)
+
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[auto-index] read failed %s: %v\n", filePath, err)
+			continue
+		}
+		if err := os.WriteFile(destPath, data, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "[auto-index] write failed %s: %v\n", destPath, err)
+			continue
+		}
+
+		doc := &DocumentMeta{
+			ID:             id,
+			Filename:       storedFilename,
+			OriginalName:   originalName,
+			ContentType:    "text/markdown",
+			Size:           info.Size(),
+			UploadedAt:     time.Now(),
+			ChunkStrategy:  "all",
+			IndexStatus:    "pending",
+			EmbeddingModel: "nomic-embed-text",
+			ChunkSizeParam: 1000,
+			OverlapParam:   200,
+		}
+		store.Add(doc)
+
+		fmt.Printf("[auto-index] indexing %s (id: %s)\n", originalName, id)
+		go runIndexPipeline(store, doc, destPath, 1000, 200)
+	}
+}
+
 // handleDocsSubroute returns an http.HandlerFunc that dispatches /api/docs/{id}[/action] routes.
 func handleDocsSubroute(store *DocumentStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

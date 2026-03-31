@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useChatStore } from '@/stores/chat'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import SendSettingsPopover from './SendSettingsPopover.vue'
 
 const chat = useChatStore()
@@ -10,6 +11,8 @@ const textarea = ref<HTMLTextAreaElement | null>(null)
 const taskMode = ref(false)
 const enabledTools = ref(['run_shell', 'read_file'])
 const invariants = ref<string[]>([])
+
+const isHelpCommand = computed(() => input.value.trimStart().startsWith('/help'))
 
 function send() {
   const text = input.value.trim()
@@ -48,6 +51,13 @@ function autoGrow(e: Event) {
     <div class="flex items-end gap-2">
       <span class="text-primary text-sm font-bold pb-2 select-none">&gt;_</span>
       <div class="flex-1 relative">
+        <Badge
+          v-if="isHelpCommand"
+          variant="secondary"
+          class="absolute right-2 top-2 z-10 text-xs font-mono opacity-80"
+        >
+          /help — project assistant
+        </Badge>
         <textarea
           ref="textarea"
           v-model="input"
@@ -58,7 +68,9 @@ function autoGrow(e: Event) {
               ? 'Describe task goal...'
               : chat.taskState?.paused
                 ? 'Task paused — click Continue above'
-                : 'Enter command...'
+                : isHelpCommand
+                  ? 'Ask about the project...'
+                  : 'Enter command...'
           "
           class="flex w-full resize-none border border-input bg-background text-foreground px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50 focus-visible:border-primary/40 [caret-color:hsl(150_60%_45%)]"
           rows="1"

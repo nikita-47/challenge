@@ -191,6 +191,9 @@ func startServer(apiKey string, cfg config) {
 		log.Printf("doc store load: %v", err)
 	}
 
+	// Auto-index project documentation from docs/*.md for RAG.
+	autoIndexProjectDocs(docStore)
+
 	// Update /api/chat registration to pass docStore for RAG support.
 	mux.HandleFunc("/api/chat", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -644,6 +647,38 @@ func handleChat(w http.ResponseWriter, r *http.Request, apiKey string, mcpMgr *M
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	// /help command: auto-inject RAG with project docs and assistant system prompt.
+	if strings.HasPrefix(req.Message, "/help") {
+		question := strings.TrimSpace(strings.TrimPrefix(req.Message, "/help"))
+		if question == "" {
+			question = "What is this project and what can it do?"
+		}
+		req.Message = question
+
+		// Find all indexed project docs.
+		docIDs := docStore.AllReadyDocIDs()
+		if len(docIDs) > 0 {
+			req.RagDocIDs = docIDs
+			req.RagQueryRewrite = true
+			req.RagTopK = 8
+			if req.RagThreshold <= 0 {
+				req.RagThreshold = 0.25
+			}
+			req.RagStrategy = "auto"
+		}
+
+		// Prepend assistant system instruction.
+		helpSystem := "You are a developer assistant for this project. " +
+			"Answer questions about the project architecture, API, components, and code based on the provided documentation. " +
+			"Be specific and reference exact files, endpoints, or components. " +
+			"If the documentation doesn't contain the answer, say so clearly."
+		if req.System != "" {
+			req.System = helpSystem + "\n\n" + req.System
+		} else {
+			req.System = helpSystem
+		}
 	}
 
 	cfg := config{
