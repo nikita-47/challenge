@@ -15,6 +15,8 @@ mcp-servers/pipeline/pipeline
 mcp-servers/pipeline/pipeline_data.json
 mcp-servers/pipeline/pipeline_output/
 mcp-servers/devtools/devtools
+mcp-servers/tickets/tickets
+mcp-servers/tickets/tickets_data.json
 /pipeline
 /scheduler
 notebook.txt

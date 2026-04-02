@@ -11,6 +11,7 @@ import TaskStatePanel from '@/components/TaskStatePanel.vue'
 import PipelineView from '@/components/PipelineView.vue'
 import DocsView from '@/components/DocsView.vue'
 import ReviewView from '@/components/ReviewView.vue'
+import SupportWidget from '@/components/SupportWidget.vue'
 import { Button } from '@/components/ui/button'
 import { useSessionsStore } from '@/stores/sessions'
 import { useChatStore } from '@/stores/chat'
@@ -51,7 +52,7 @@ onMounted(() => {
     />
 
     <!-- Main area -->
-    <div class="flex flex-1 flex-col min-w-0">
+    <div class="relative flex flex-1 flex-col min-w-0">
       <!-- Toolbar -->
       <div class="flex items-center gap-1 px-2 py-1 border-b border-primary/20 bg-card">
         <Button
@@ -80,6 +81,7 @@ onMounted(() => {
       <ChatWindow class="flex-1 overflow-hidden" />
       <TokenBar />
       <ChatInput />
+      <SupportWidget />
     </div>
 
     <!-- Right sidebar -->

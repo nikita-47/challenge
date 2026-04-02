@@ -464,6 +464,15 @@ func (ds *DocumentStore) AllReadyDocIDs() []string {
 func autoIndexProjectDocs(store *DocumentStore) {
 	matches, err := filepath.Glob("docs/*.md")
 	if err != nil || len(matches) == 0 {
+		matches = []string{}
+	}
+
+	supportMatches, supportErr := filepath.Glob("docs/support/*.md")
+	if supportErr == nil {
+		matches = append(matches, supportMatches...)
+	}
+
+	if len(matches) == 0 {
 		return
 	}
 

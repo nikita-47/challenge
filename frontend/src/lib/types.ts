@@ -353,3 +353,10 @@ export interface ReviewStep {
   status: ReviewStepStatus
   detail?: string
 }
+
+// ─── Support Types ──────────────────────────────────────────────────────
+export interface SupportMessage {
+  role: 'user' | 'assistant'
+  content: string
+  isStreaming?: boolean
+}

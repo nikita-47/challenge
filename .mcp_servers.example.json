@@ -18,6 +18,9 @@
     },
     "devtools": {
       "command": "./mcp-servers/devtools/devtools"
+    },
+    "tickets": {
+      "command": "./mcp-servers/tickets/tickets"
     }
   }
 }

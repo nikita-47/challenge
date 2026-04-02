@@ -219,6 +219,15 @@ func startServer(apiKey string, cfg config) {
 	})
 	mux.HandleFunc("/api/docs/", handleDocsSubroute(docStore))
 
+	// ─── Support endpoints ───────────────────────────────────────────────────
+	mux.HandleFunc("/api/support/chat", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		handleSupportChat(w, r, apiKey, mcpMgr, docStore)
+	})
+
 	// Static files — serve frontend/dist/ if it exists.
 	distDir := "frontend/dist"
 	if info, err := os.Stat(distDir); err == nil && info.IsDir() {

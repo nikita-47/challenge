@@ -581,3 +581,27 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 - `frontend/src/components/SessionPanel.vue` — added "code review" nav button
 
 **Key code:** `performCodeReview()`, `buildReviewRAGContext()`, `listOpenPRs()`, `postPRComment()`, `useReviewStore`, `ReviewView.vue`
+
+---
+
+## Day 33 — Support Assistant Widget ✅
+
+**Assignment:** Build a mini user-support service: floating chat widget (circle button), RAG-powered FAQ answers, MCP ticket server, ticket context in responses.
+
+**What was built on top of previous day:**
+- `backend/support.go` (new) — `handleSupportChat()`: filters FAQ docs by `OriginalName` containing "faq-", fetches ticket context via MCP `ticket_get`, calls `performRAGSearch()` with FAQ doc IDs, streams Claude Haiku response via SSE
+- `backend/server.go` — new route `POST /api/support/chat`
+- `backend/docs.go` — `autoIndexProjectDocs()` extended to scan `docs/support/*.md` in addition to `docs/*.md`
+- `mcp-servers/tickets/main.go` (new) — MCP server with 5 tools: `ticket_create`, `ticket_list`, `ticket_get`, `ticket_close`, `ticket_add_message`. Stdio transport via mcp-go
+- `mcp-servers/tickets/store.go` (new) — `Store` with `sync.RWMutex`, JSON persistence, debounced save. `Ticket` struct with status/priority/messages
+- `docs/support/faq-general.md` (new) — FAQ: sessions, models, providers, strategies
+- `docs/support/faq-features.md` (new) — FAQ: RAG, MCP, pipeline, review, memory, tasks
+- `docs/support/faq-troubleshooting.md` (new) — FAQ: common errors and fixes
+- `frontend/src/stores/support.ts` (new) — Pinia store with SSE streaming via `streamRequest()`, message history, abort, ticket ID
+- `frontend/src/components/SupportWidget.vue` (new) — floating widget: circle "?" button (bottom-right of chat area) → chat panel overlay (500px, w-96). Markdown rendering via `marked`, auto-scroll, animated streaming dots, clear/minimize buttons
+- `frontend/src/App.vue` — SupportWidget placed inside chat main area (absolute positioned, not fixed)
+- `frontend/src/lib/types.ts` — added `SupportMessage` interface
+- `dev.sh` — added tickets MCP server build
+- `.mcp_servers.example.json` — added tickets entry
+
+**Key code:** `handleSupportChat()`, `SupportWidget.vue`, `useSupportStore`, `ticket_create/list/get/close/add_message` MCP tools

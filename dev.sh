@@ -39,6 +39,11 @@ build_mcp_servers() {
         go build -o mcp-servers/devtools/devtools ./mcp-servers/devtools/
         echo "Devtools MCP server built"
     fi
+    if [ -d "mcp-servers/tickets" ]; then
+        echo "Building Tickets MCP server..."
+        go build -o mcp-servers/tickets/tickets ./mcp-servers/tickets/
+        echo "Tickets MCP server built"
+    fi
 }
 
 start_go() {

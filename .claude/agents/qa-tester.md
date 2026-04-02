@@ -69,6 +69,7 @@ Report results as a structured summary:
 - If you encounter flaky behavior, retry once before reporting
 - Always check the browser console for JavaScript errors even if the UI looks correct
 - For API tests, always verify both successful and error responses
+- **CLEANUP after testing**: Before finishing, delete ALL screenshot/artifact files you created in the project root (*.png, step*.md, etc.) using the Bash tool. Only files in `./swarm-report/` should remain. Run `rm -f *.png step*.md` in the project root as a final step.
 
 **Update your agent memory** as you discover test patterns, common failure modes, flaky behaviors, and application-specific testing quirks. Write concise notes about what you found.
 
