@@ -64,6 +64,26 @@ func main() {
 		handleReadFile,
 	)
 
+	s.AddTool(
+		mcp.NewTool("dev_grep",
+			mcp.WithDescription("Search for a pattern across project files. Returns matching lines with file paths and line numbers."),
+			mcp.WithString("pattern", mcp.Required(), mcp.Description("Search pattern (grep basic regex)")),
+			mcp.WithString("path", mcp.Description("Directory to search in, relative to project root (default: '.')")),
+			mcp.WithString("glob", mcp.Description("File glob filter (e.g. '*.go', '*.vue', '*.ts')")),
+			mcp.WithNumber("max_results", mcp.Description("Maximum matching lines to return (default 50, max 200)")),
+		),
+		handleGrep,
+	)
+
+	s.AddTool(
+		mcp.NewTool("dev_write_file",
+			mcp.WithDescription("Write content to a file. Creates parent directories if needed. Cannot write to .env or .git/ paths."),
+			mcp.WithString("path", mcp.Required(), mcp.Description("File path relative to project root")),
+			mcp.WithString("content", mcp.Required(), mcp.Description("Content to write to the file")),
+		),
+		handleWriteFile,
+	)
+
 	if err := server.ServeStdio(s); err != nil {
 		fmt.Printf("Server error: %v\n", err)
 	}
@@ -244,4 +264,99 @@ func handleReadFile(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTool
 	}
 
 	return mcp.NewToolResultText(sb.String()), nil
+}
+
+func handleGrep(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	pattern, err := req.RequireString("pattern")
+	if err != nil {
+		return mcp.NewToolResultError("pattern is required"), nil
+	}
+
+	dirPath := "."
+	if v, err := req.RequireString("path"); err == nil && v != "" {
+		dirPath = v
+	}
+	if strings.Contains(dirPath, "..") {
+		return mcp.NewToolResultError("Path traversal not allowed"), nil
+	}
+
+	maxResults := 50
+	if v, err := req.RequireInt("max_results"); err == nil && v > 0 {
+		maxResults = v
+	}
+	if maxResults > 200 {
+		maxResults = 200
+	}
+
+	fullPath := filepath.Join(projectDir(), dirPath)
+
+	args := []string{"-rn", "--exclude-dir=.git", "--exclude-dir=node_modules", "--exclude-dir=dist", "--exclude-dir=.sandbox"}
+	if glob, err := req.RequireString("glob"); err == nil && glob != "" {
+		args = append(args, "--include="+glob)
+	}
+	args = append(args, pattern, fullPath)
+
+	cmd := exec.CommandContext(ctx, "grep", args...)
+	out, err := cmd.CombinedOutput()
+	output := string(out)
+
+	if err != nil && output == "" {
+		return mcp.NewToolResultText("No matches found."), nil
+	}
+
+	lines := strings.Split(strings.TrimSpace(output), "\n")
+	truncated := false
+	if len(lines) > maxResults {
+		lines = lines[:maxResults]
+		truncated = true
+	}
+
+	// Make paths relative to project root.
+	root := projectDir()
+	if !strings.HasSuffix(root, "/") {
+		root += "/"
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("Search results for '%s' (%d matches):\n\n", pattern, len(lines)))
+	for _, line := range lines {
+		sb.WriteString(strings.TrimPrefix(line, root) + "\n")
+	}
+	if truncated {
+		sb.WriteString(fmt.Sprintf("\n... truncated at %d results\n", maxResults))
+	}
+
+	return mcp.NewToolResultText(sb.String()), nil
+}
+
+func handleWriteFile(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	path, err := req.RequireString("path")
+	if err != nil {
+		return mcp.NewToolResultError("path is required"), nil
+	}
+	content, err := req.RequireString("content")
+	if err != nil {
+		return mcp.NewToolResultError("content is required"), nil
+	}
+
+	if strings.Contains(path, "..") {
+		return mcp.NewToolResultError("Path traversal not allowed"), nil
+	}
+
+	// Prohibit writing to sensitive paths.
+	lower := strings.ToLower(path)
+	if lower == ".env" || strings.HasPrefix(lower, ".env.") || strings.HasPrefix(path, ".git/") || strings.HasPrefix(path, ".git\\") {
+		return mcp.NewToolResultError("Cannot write to .env or .git/ paths"), nil
+	}
+
+	fullPath := filepath.Join(projectDir(), path)
+
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Cannot create directory: %v", err)), nil
+	}
+
+	if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Cannot write file: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Written %d bytes to %s", len(content), path)), nil
 }

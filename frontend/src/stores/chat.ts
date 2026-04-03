@@ -318,6 +318,105 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function sendFilesMessage(text: string) {
+    error.value = null
+
+    const question = text.replace(/^\/files\s*/, '').trim() || 'List the project structure and provide an overview.'
+    messages.value.push({ role: 'user', content: text })
+
+    const assistantMsg: ChatMessage = {
+      role: 'assistant',
+      content: '',
+      isStreaming: true,
+    }
+    messages.value.push(assistantMsg)
+
+    isStreaming.value = true
+    abortController = new AbortController()
+
+    // Build history from recent messages (last 10 non-streaming).
+    const history = messages.value
+      .filter((m) => !m.isStreaming && (m.role === 'user' || m.role === 'assistant') && m.content)
+      .slice(-10)
+      .map((m) => ({ role: m.role, content: m.content }))
+
+    const url = '/api/files/chat'
+    const body = { message: question, history }
+
+    let pendingToolCalls: ToolCall[] = []
+
+    try {
+      await streamRequest(url, body, (event) => {
+        const msg = messages.value[messages.value.length - 1]
+        if (!msg) {
+          return
+        }
+
+        switch (event.type) {
+          case 'text_delta':
+            msg.content += event.text
+            break
+
+          case 'tool_call': {
+            const tc: ToolCall = {
+              tool: event.tool,
+              input: event.input as Record<string, unknown>,
+            }
+            pendingToolCalls.push(tc)
+            if (!msg.toolCalls) {
+              msg.toolCalls = []
+            }
+            msg.toolCalls.push(tc)
+            break
+          }
+
+          case 'tool_result': {
+            const last = pendingToolCalls.find(
+              (tc) => tc.tool === event.tool && tc.output === undefined,
+            )
+            if (last) {
+              last.output = event.output
+              last.isError = event.is_error
+            }
+            break
+          }
+
+          case 'usage':
+            if (event.usage) {
+              const u = event.usage
+              usage.value = { input: u.input, output: u.output }
+              totalUsage.value.input += u.input
+              totalUsage.value.output += u.output
+              exchanges.value++
+            }
+            break
+
+          case 'done':
+            msg.isStreaming = false
+            break
+
+          case 'error':
+            error.value = event.message ?? event.text ?? 'Unknown error'
+            msg.isStreaming = false
+            break
+        }
+      }, abortController.signal)
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        // User cancelled
+      } else {
+        error.value = e instanceof Error ? e.message : 'Unknown error'
+      }
+    } finally {
+      isStreaming.value = false
+      const msg = messages.value[messages.value.length - 1]
+      if (msg) {
+        msg.isStreaming = false
+      }
+      pendingToolCalls = []
+    }
+  }
+
   function startTask(goal: string, enabledTools?: string[], invariants?: string[]) {
     activeEnabledTools.value = enabledTools ?? []
     taskState.value = {
@@ -356,6 +455,7 @@ export const useChatStore = defineStore('chat', () => {
     error,
     settings,
     sendMessage,
+    sendFilesMessage,
     clearMessages,
     setMessages,
     setSettings,

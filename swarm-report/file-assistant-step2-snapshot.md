@@ -1,0 +1,66 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - button "sessions" [ref=e7]
+        - button "memory" [ref=e8]
+        - button "mcp" [ref=e9]
+      - button "×" [ref=e10]
+    - button "+ new_chat" [ref=e12]
+    - generic [ref=e16]:
+      - generic [ref=e17] [cursor=pointer]:
+        - generic [ref=e19]: Assist
+        - button "×" [ref=e20]
+      - generic [ref=e21] [cursor=pointer]:
+        - generic [ref=e23]: Files
+        - button "×" [ref=e24]
+      - generic [ref=e25] [cursor=pointer]:
+        - generic [ref=e27]: Local
+        - button "×" [ref=e28]
+      - generic [ref=e29] [cursor=pointer]:
+        - generic [ref=e31]: NO RAG
+        - button "×" [ref=e32]
+      - generic [ref=e33] [cursor=pointer]:
+        - generic [ref=e35]: RAG
+        - button "×" [ref=e36]
+      - generic [ref=e37] [cursor=pointer]:
+        - generic [ref=e39]: Railway
+        - button "×" [ref=e40]
+      - generic [ref=e41] [cursor=pointer]:
+        - generic [ref=e43]: assistant
+        - button "×" [ref=e44]
+      - generic [ref=e45] [cursor=pointer]:
+        - generic [ref=e47]: local llm
+        - button "×" [ref=e48]
+      - generic [ref=e49] [cursor=pointer]:
+        - generic [ref=e51]: test-help-cmd
+        - button "×" [ref=e52]
+    - generic [ref=e53]:
+      - button "▸ pipeline" [ref=e54]
+      - button "▸ documents" [ref=e55]
+      - button "▸ code review" [ref=e56]
+    - generic [ref=e57]:
+      - generic [ref=e58]:
+        - generic [ref=e59]: // settings
+        - generic "Claude API" [ref=e60]
+      - generic [ref=e61]:
+        - button "claude" [ref=e62]
+        - button "local" [ref=e63]
+        - button "railway" [ref=e64]
+      - button "apply" [ref=e65]
+  - generic [ref=e66]:
+    - generic [ref=e67]:
+      - button "☰" [ref=e68]
+      - button "ⓘ" [ref=e69]
+    - generic [ref=e74]: Start a conversation...
+    - generic [ref=e76]:
+      - generic [ref=e77]: ">_"
+      - generic [ref=e78]:
+        - generic [ref=e88]: /files — file assistant
+        - textbox "Work with project files..." [active] [ref=e89]: /files
+      - generic [ref=e80]:
+        - button "Send settings" [ref=e82]:
+          - img [ref=e83]
+        - button "Send" [ref=e90]
+    - button "?" [ref=e86]:
+      - generic [ref=e87]: "?"

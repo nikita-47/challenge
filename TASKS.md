@@ -605,3 +605,18 @@ Compare: do the answers differ? Which approach gave the most accurate result?
 - `.mcp_servers.example.json` — added tickets entry
 
 **Key code:** `handleSupportChat()`, `SupportWidget.vue`, `useSupportStore`, `ticket_create/list/get/close/add_message` MCP tools
+
+---
+
+## Day 34 — File Assistant ✅
+
+**Assignment:** Build a `/files` command that gives the chat an agentic file assistant — browses, searches, reads, and writes project files via MCP tools in an autonomous tool-use loop.
+
+**What was built on top of previous day:**
+- `backend/files.go` (new) — `handleFilesChat()`: agentic tool-use loop (up to 10 turns), collects devtools MCP tools, strips `devtools__` prefix for Claude API, processes tool_use/tool_result blocks, streams SSE events (text_delta, tool_call, tool_result, usage, done). `filesCallClaude()` — non-streaming Claude Sonnet call with tools
+- `backend/server.go` — new route `POST /api/files/chat`
+- `mcp-servers/devtools/main.go` — 2 new tools: `dev_grep` (pattern search with glob filter, max_results cap at 200, excludes .git/node_modules/dist/.sandbox), `dev_write_file` (creates files with parent dirs, blocks .env/.git writes)
+- `frontend/src/stores/chat.ts` — `sendFilesMessage()`: sends `/files` messages to `/api/files/chat`, handles tool_call/tool_result SSE events, maintains tool calls state
+- `frontend/src/components/ChatInput.vue` — `/files` command detection with Badge hint, dynamic placeholder
+
+**Key code:** `handleFilesChat()`, `filesCallClaude()`, `sendFilesMessage()`, `dev_grep`, `dev_write_file`
